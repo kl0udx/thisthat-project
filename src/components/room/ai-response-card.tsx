@@ -4,11 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Maximize2, X, Code, Eye, Sparkles } from 'lucide-react'
+import { Copy, X, GripVertical } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { cn } from '@/lib/utils'
 
 interface AIResponseCardProps {
   id: string
@@ -32,46 +30,25 @@ export function AIResponseCard({
   onRemove
 }: AIResponseCardProps) {
   const [isDragging, setIsDragging] = useState(false)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const cardRef = useRef<HTMLDivElement>(null)
 
-  // Detect if content is code
-  const isCode = content.includes('```') || content.includes('function') || content.includes('const')
-  
-  // Extract code if present
-  const extractCode = (text: string) => {
-    const codeMatch = text.match(/```[\w]*\n([\s\S]*?)```/)
-    if (codeMatch) {
-      return {
-        code: codeMatch[1].trim(),
-        language: text.match(/```(\w+)/)?.[1] || 'javascript'
-      }
-    }
-    return { code: text, language: 'javascript' }
-  }
-
-  const { code, language } = isCode ? extractCode(content) : { code: content, language: 'text' }
-
   const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return
+    // Only drag from the header
+    if (!(e.target as HTMLElement).closest('.drag-handle')) return
     
     setIsDragging(true)
-    const rect = cardRef.current?.getBoundingClientRect()
-    if (rect) {
-      setDragOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      })
-    }
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    })
   }
 
   useEffect(() => {
     if (!isDragging) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newX = e.clientX - dragOffset.x
-      const newY = e.clientY - dragOffset.y
-      onMove(id, newX, newY)
+      onMove(id, e.clientX - dragStart.x, e.clientY - dragStart.y)
     }
 
     const handleMouseUp = () => {
@@ -85,40 +62,66 @@ export function AIResponseCard({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragOffset, id, onMove])
+  }, [isDragging, dragStart, id, onMove])
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(code)
+    navigator.clipboard.writeText(content)
     // Could add toast notification here
   }
 
-  const getProviderIcon = () => {
+  const getProviderInfo = () => {
     switch (provider) {
-      case 'openai': return '🤖'
-      case 'anthropic': return '🧠'
-      case 'google': return '✨'
-      default: return '🤖'
+      case 'anthropic':
+        return { name: 'Claude', color: 'bg-purple-500', icon: '🧠' }
+      case 'openai':
+        return { name: 'ChatGPT', color: 'bg-green-500', icon: '🤖' }
+      case 'google':
+        return { name: 'Gemini', color: 'bg-blue-500', icon: '✨' }
+      default:
+        return { name: provider, color: 'bg-gray-500', icon: '🤖' }
     }
   }
+
+  const providerInfo = getProviderInfo()
 
   return (
     <motion.div
       ref={cardRef}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0, opacity: 0 }}
       className="absolute"
-      style={{ left: position.x, top: position.y }}
+      style={{ 
+        left: position.x, 
+        top: position.y,
+        cursor: isDragging ? 'grabbing' : 'default'
+      }}
       onMouseDown={handleMouseDown}
     >
-      <Card className={`w-[450px] shadow-xl ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} select-none`}>
+      <Card className={cn(
+        "w-[450px] shadow-2xl",
+        "bg-white dark:bg-gray-900",
+        "border-2",
+        isDragging && "opacity-90"
+      )}>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{getProviderIcon()}</span>
-              <div>
-                <h3 className="font-semibold text-sm">{provider.charAt(0).toUpperCase() + provider.slice(1)}</h3>
-                <p className="text-xs text-muted-foreground">via {executedBy}</p>
+            <div className="flex items-center gap-3 flex-1 drag-handle cursor-grab">
+              <div className={cn(
+                "w-10 h-10 rounded-lg flex items-center justify-center text-lg",
+                providerInfo.color
+              )}>
+                {providerInfo.icon}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">{providerInfo.name}</h3>
+                  <Badge variant="secondary" className="text-xs">
+                    via {executedBy}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  "{prompt}"
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -133,61 +136,21 @@ export function AIResponseCard({
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8"
+                className="h-8 w-8 hover:bg-red-100 hover:text-red-600"
                 onClick={() => onRemove(id)}
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          <div className="mt-2">
-            <p className="text-xs text-muted-foreground">Prompt: "{prompt.slice(0, 50)}..."</p>
-          </div>
         </CardHeader>
         
         <CardContent>
-          {isCode ? (
-            <Tabs defaultValue="code" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="code" className="text-xs">
-                  <Code className="h-3 w-3 mr-1" />
-                  Code
-                </TabsTrigger>
-                <TabsTrigger value="preview" className="text-xs">
-                  <Eye className="h-3 w-3 mr-1" />
-                  Preview
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="code" className="mt-2">
-                <div className="relative">
-                  <SyntaxHighlighter
-                    language={language}
-                    style={oneDark}
-                    customStyle={{
-                      fontSize: '12px',
-                      borderRadius: '6px',
-                      maxHeight: '300px'
-                    }}
-                  >
-                    {code}
-                  </SyntaxHighlighter>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="preview" className="mt-2">
-                <div className="border rounded-md p-4 min-h-[200px] bg-white">
-                  <p className="text-xs text-muted-foreground text-center">
-                    Preview coming soon...
-                  </p>
-                </div>
-              </TabsContent>
-            </Tabs>
-          ) : (
-            <div className="prose prose-sm max-w-none">
-              <p className="whitespace-pre-wrap">{content}</p>
+          <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="max-h-[400px] overflow-y-auto">
+              <p className="whitespace-pre-wrap text-sm">{content}</p>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     </motion.div>

@@ -13,6 +13,8 @@ import { Send, Minimize2, Maximize2, Sparkles, Search, Code, Loader2, MessageSqu
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { parseMessage, getAvailableCommands, type ParsedCommand } from '@/lib/command-parser'
+import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
 interface Message {
   id: string
@@ -33,6 +35,7 @@ interface ChatPanelProps {
   broadcast: (data: any) => void
   sendTo: (userId: string, data: any) => void
   providers: Map<string, { userId: string; nickname: string; type: string }>
+  localProviders: Set<string>
   onCanvasAdd?: (data: any) => void
 }
 
@@ -43,6 +46,7 @@ export function ChatPanel({
   broadcast, 
   sendTo,
   providers,
+  localProviders,
   onCanvasAdd 
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -50,6 +54,11 @@ export function ChatPanel({
   const [isMinimized, setIsMinimized] = useState(false)
   const [pendingRequests, setPendingRequests] = useState<Map<string, any>>(new Map())
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Debug logs
+  console.log('ChatPanel rendering, localProviders:', localProviders)
+  console.log('Input:', input)
+  console.log('Providers available:', providers)
 
   // Listen for P2P messages
   useEffect(() => {
@@ -96,113 +105,188 @@ export function ChatPanel({
   }, [messages])
 
   const handleSend = async () => {
-    if (!input.trim()) return
+    console.log('handleSend called! Input:', input)
+    if (!input.trim()) {
+      console.log('Input is empty, returning')
+      return
+    }
 
+    console.log('=== SENDING MESSAGE ===')
+    console.log('Input:', input)
+    console.log('Starts with @?', input.startsWith('@'))
+
+    // Parse the message
     const parsed = parseMessage(input)
-    
-    // Add user message
+    console.log('Parsed message:', parsed)
+
+    // Add user message to chat
     const userMessage: Message = {
       id: crypto.randomUUID(),
       type: 'user',
       user: nickname,
       content: input,
-      timestamp: Date.now(),
-      command: parsed.command
+      timestamp: Date.now()
     }
-    
+
     setMessages(prev => [...prev, userMessage])
-    
-    // Broadcast to others if it's a regular chat
-    if (parsed.type === 'chat') {
-      broadcast({
-        type: 'chat-message',
-        message: userMessage
-      })
-    }
-    
-    setInput('')
-    
+
     // Handle commands
-    switch (parsed.type) {
-      case 'ai':
-        handleAICommand(parsed, userMessage.id)
-        break
-        
-      case 'search':
-        handleSearchCommand(parsed, userMessage.id)
-        break
-        
-      case 'help':
-        handleHelpCommand()
-        break
+    if (parsed.type === 'ai') {
+      console.log('Detected AI command!')
+      console.log('Command:', parsed.command)
+      console.log('Prompt:', parsed.prompt)
+      handleAICommand(parsed, userMessage.id)
     }
+
+    setInput('')
   }
 
   const handleAICommand = async (parsed: any, messageId: string) => {
-    // Find available AI providers
-    const aiProviders = Array.from(providers.entries())
-      .filter(([_, info]) => ['openai', 'anthropic', 'google'].includes(info.type))
-    
-    if (aiProviders.length === 0) {
+    console.log('=== handleAICommand called ===')
+    console.log('Parsed:', parsed)
+    console.log('Message ID:', messageId)
+
+    // Map command to provider
+    const providerMap: { [key: string]: string } = {
+      'ai': 'anthropic', // default to anthropic
+      'claude': 'anthropic',
+      'chatgpt': 'openai',
+      'gemini': 'google'
+    }
+
+    const providerType = providerMap[parsed.command] || parsed.command
+    console.log('Provider type:', providerType)
+
+    // Check if we have this provider locally
+    if (localProviders.has(providerType)) {
+      console.log('We have this provider locally!')
+
+      const apiKey = localStorage.getItem(`api_key_${providerType}`)
+      if (!apiKey) {
+        console.error('No API key found!')
+        return
+      }
+
+      // Create loading message
+      const loadingMessageId = crypto.randomUUID()
       setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        type: 'system',
-        user: 'System',
-        content: '❌ No AI providers available. Someone needs to add one using the robot button!',
-        timestamp: Date.now()
+        id: loadingMessageId,
+        type: 'ai',
+        user: providerType,
+        content: 'Thinking...',
+        timestamp: Date.now(),
+        isLoading: true
       }])
-      return
-    }
-    
-    // If specific AI requested, use that
-    let selectedProvider = aiProviders[0] // default to first
-    if (parsed.command && parsed.command !== 'ai') {
-      const specific = aiProviders.find(([_, info]) => info.type === parsed.command)
-      if (specific) selectedProvider = specific
-    }
-    
-    const [providerType, providerInfo] = selectedProvider
-    const requestId = crypto.randomUUID()
-    
-    // Store pending request
-    setPendingRequests(prev => new Map(prev).set(requestId, {
-      messageId,
-      prompt: parsed.prompt
-    }))
-    
-    // Show loading message
-    setMessages(prev => [...prev, {
-      id: requestId,
-      type: 'ai',
-      user: providerInfo.type,
-      content: 'Thinking...',
-      timestamp: Date.now(),
-      provider: providerInfo.nickname,
-      isLoading: true
-    }])
-    
-    // If we own this provider, process locally
-    if (providerInfo.userId === userId) {
-      // Simulate processing (in real app, call actual API)
-      setTimeout(() => {
-        broadcast({
+
+      try {
+        let responseText = ''
+
+        // Use the appropriate SDK based on provider
+        switch (providerType) {
+          case 'anthropic': {
+            const anthropic = new Anthropic({
+              apiKey: apiKey,
+              dangerouslyAllowBrowser: true
+            })
+
+            const response = await anthropic.messages.create({
+              model: 'claude-3-haiku-20240307',
+              max_tokens: 2000,
+              messages: [{
+                role: 'user',
+                content: parsed.prompt
+              }]
+            })
+
+            responseText = response.content[0].text
+            break
+          }
+          case 'openai': {
+            const openai = new OpenAI({
+              apiKey: apiKey,
+              dangerouslyAllowBrowser: true
+            })
+
+            const response = await openai.chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages: [{
+                role: 'user',
+                content: parsed.prompt
+              }]
+            })
+
+            responseText = response.choices[0].message.content || ''
+            break
+          }
+          case 'google': {
+            // Gemini works with fetch - no SDK needed
+            const response = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [{
+                      text: parsed.prompt
+                    }]
+                  }]
+                })
+              }
+            )
+
+            const data = await response.json()
+            const part = data.candidates?.[0]?.content?.parts?.[0]
+            responseText = typeof part === 'object' && 'text' in part ? (part as any).text : ''
+            break
+          }
+        }
+
+        console.log('API Response received:', responseText.substring(0, 100) + '...')
+
+        // Remove loading message
+        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
+
+        // Add response to canvas!
+        onCanvasAdd?.({
           type: 'ai-response',
-          requestId,
-          result: `[AI Response to: "${parsed.prompt}"]\n\nThis would be the actual ${providerInfo.type} response.`,
-          provider: providerInfo.type,
-          executedBy: nickname
+          content: responseText,
+          prompt: parsed.prompt,
+          provider: providerType,
+          executedBy: nickname,
+          position: { x: 500, y: 300 }
         })
-      }, 1000)
+
+        // Show success in chat
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          type: 'system',
+          user: 'System',
+          content: `✅ Response added to canvas`,
+          timestamp: Date.now()
+        }])
+
+      } catch (error: any) {
+        console.error('API Error:', error)
+
+        // Remove loading message
+        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
+
+        // Show error
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          type: 'system',
+          user: 'System',
+          content: `❌ Error: ${error.message}`,
+          timestamp: Date.now()
+        }])
+      }
     } else {
-      // Request from peer
-      sendTo(providerInfo.userId, {
-        type: 'ai-request',
-        requestId,
-        prompt: parsed.prompt,
-        provider: providerInfo.type,
-        requestedBy: userId,
-        requestedByNickname: nickname
-      })
+      console.log('Provider not available locally')
+      // Check if someone else has it
+      const remoteProvider = Array.from(providers.entries())
+        .find(([_, info]) => info.type === providerType)
+      console.log('Remote provider:', remoteProvider)
     }
   }
 
@@ -429,7 +513,11 @@ export function ChatPanel({
                       </Card>
                     )}
                     
-                    <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex gap-2">
+                    <form onSubmit={(e) => { 
+                      e.preventDefault()
+                      console.log('Form submitted!')
+                      handleSend()
+                    }} className="flex gap-2">
                       <Input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}

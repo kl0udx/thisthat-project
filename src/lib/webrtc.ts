@@ -207,4 +207,8 @@ export class P2PConnection {
     })
     this.channel?.unsubscribe()
   }
+
+  getPeers(): Peer[] {
+    return Array.from(this.peers.values())
+  }
 } 

@@ -10,52 +10,59 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ExternalLink, Sparkles, ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import React from 'react'
 
 interface Provider {
   id: string
   name: string
-  icon: string
+  icon: React.ReactNode
   description: string
+  apiKeyPlaceholder: string
+  apiKeyPattern?: string
+  apiKeyHelp?: string
   color: string
   apiKeyUrl: string
-  apiKeyInstructions: string
-  placeholder: string
-  validation: (key: string) => boolean
 }
 
 const PROVIDERS: Provider[] = [
   {
     id: 'openai',
     name: 'ChatGPT',
-    icon: '🤖',
-    description: 'Best for code generation and general tasks',
-    color: 'from-green-500 to-emerald-500',
-    apiKeyUrl: 'https://platform.openai.com/api-keys',
-    apiKeyInstructions: 'Click "Create new secret key" and copy it',
-    placeholder: 'sk-...',
-    validation: (key) => key.startsWith('sk-') && key.length > 20
+    icon: (
+      <img src="/logos/openai.png" alt="OpenAI Logo" className="w-8 h-8 object-contain" />
+    ),
+    description: 'OpenAI\'s ChatGPT model for natural language processing and generation.',
+    apiKeyPlaceholder: 'sk-...',
+    apiKeyPattern: '^sk-[A-Za-z0-9]{32,}$',
+    apiKeyHelp: 'Your OpenAI API key should start with "sk-" followed by 32 or more characters.',
+    color: '',
+    apiKeyUrl: 'https://platform.openai.com/api-keys'
   },
   {
     id: 'anthropic',
     name: 'Claude',
-    icon: '🧠',
-    description: 'Best for analysis and complex reasoning',
-    color: 'from-purple-500 to-violet-500',
-    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-    apiKeyInstructions: 'Click "Create Key" and copy it',
-    placeholder: 'sk-ant-...',
-    validation: (key) => key.startsWith('sk-ant-') && key.length > 20
+    icon: (
+      <img src="/logos/claude.png" alt="Claude Logo" className="w-8 h-8 object-contain" />
+    ),
+    description: 'Anthropic\'s Claude model for advanced reasoning and analysis.',
+    apiKeyPlaceholder: 'sk-ant-...',
+    apiKeyPattern: '^sk-ant-[A-Za-z0-9]{32,}$',
+    apiKeyHelp: 'Your Anthropic API key should start with "sk-ant-" followed by 32 or more characters.',
+    color: '',
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys'
   },
   {
     id: 'google',
     name: 'Gemini',
-    icon: '✨',
-    description: 'Best for creative tasks and large contexts',
-    color: 'from-blue-500 to-cyan-500',
-    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
-    apiKeyInstructions: 'Click "Create API Key" and copy it',
-    placeholder: 'AIza...',
-    validation: (key) => key.startsWith('AIza') && key.length > 20
+    icon: (
+      <img src="/logos/gemini.png" alt="Gemini Logo" className="w-8 h-8 object-contain" />
+    ),
+    description: 'Google\'s Gemini model for multimodal understanding and generation.',
+    apiKeyPlaceholder: 'AIza...',
+    apiKeyPattern: '^AIza[A-Za-z0-9_-]{35}$',
+    apiKeyHelp: 'Your Google API key should start with "AIza" followed by 35 characters.',
+    color: '',
+    apiKeyUrl: 'https://aistudio.google.com/app/apikey'
   }
 ]
 
@@ -94,7 +101,7 @@ export function AIProviderModal({
     if (!selectedProvider || !apiKey.trim()) return
 
     // Validate format
-    if (!selectedProvider.validation(apiKey.trim())) {
+    if (!selectedProvider.apiKeyPattern || !new RegExp(selectedProvider.apiKeyPattern).test(apiKey.trim())) {
       setError(`This doesn't look like a valid ${selectedProvider.name} API key`)
       return
     }
@@ -104,6 +111,7 @@ export function AIProviderModal({
 
     // Simulate validation (in real app, could do a test API call)
     setTimeout(() => {
+      console.log('Modal calling onProviderAdded with:', selectedProvider.id, apiKey)
       onProviderAdded(selectedProvider.id, apiKey.trim())
       setIsValidating(false)
       handleBack()
@@ -205,7 +213,7 @@ export function AIProviderModal({
                     Get your API key
                   </h4>
                   <p className="text-sm text-muted-foreground mb-3">
-                    {selectedProvider.apiKeyInstructions}
+                    {selectedProvider.apiKeyHelp}
                   </p>
                   <Button
                     variant="outline"
@@ -228,7 +236,7 @@ export function AIProviderModal({
                     <Input
                       id="apiKey"
                       type={showApiKey ? 'text' : 'password'}
-                      placeholder={selectedProvider.placeholder}
+                      placeholder={selectedProvider.apiKeyPlaceholder}
                       value={apiKey}
                       onChange={(e) => {
                         setApiKey(e.target.value)

@@ -30,6 +30,7 @@ import { useClearCanvas } from "@/hooks/use-clear-canvas"
 import { useDeleteSelection } from "@/hooks/use-delete-selection"
 import { useShapeAdd } from "@/hooks/use-shape-add"
 import { useShapeDelete } from "@/hooks/use-shape-delete"
+import { AIResponseCard } from '@/components/room/ai-response-card'
 
 export default function RoomPage({
   params,
@@ -44,13 +45,7 @@ export default function RoomPage({
   const [nickname, setNickname] = useState<string | null>(null)
   const [showNicknameModal, setShowNicknameModal] = useState(true)
   const [suggestedNickname] = useState(() => generateNickname())
-  const [userId] = useState(() => {
-    const stored = localStorage.getItem('userId')
-    if (stored) return stored
-    const newId = crypto.randomUUID()
-    localStorage.setItem('userId', newId)
-    return newId
-  })
+  const [userId, setUserId] = useState<string | null>(null)
   const [showShareModal, setShowShareModal] = useState(false)
   const [showProviderModal, setShowProviderModal] = useState(false)
   const [providers, setProviders] = useState<Map<string, { userId: string; nickname: string; type: string }>>(new Map())
@@ -186,6 +181,18 @@ export default function RoomPage({
     localStorage.setItem('local_providers', JSON.stringify(Array.from(localProviders)))
   }, [localProviders])
 
+  // Add this effect to set userId on mount, using localStorage only on the client
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      let stored = localStorage.getItem('userId')
+      if (!stored) {
+        stored = crypto.randomUUID()
+        localStorage.setItem('userId', stored)
+      }
+      setUserId(stored)
+    }
+  }, [])
+
   // Handler functions
   const handleSetNickname = (newNickname: string) => {
     setNickname(newNickname)
@@ -274,6 +281,50 @@ export default function RoomPage({
       window.canvasTools.deleteSelectedShapes()
     }
   }, [])
+
+  const handleAddProvider = useCallback((provider: string, apiKey: string) => {
+    console.log('handleAddProvider called with:', provider)
+    setLocalProviders(prev => {
+      const newSet = new Set(prev).add(provider)
+      console.log('Updating localProviders from:', prev, 'to:', newSet)
+      return newSet
+    })
+    console.log('Storing API key for:', provider)
+    localStorage.setItem(`api_key_${provider}`, apiKey)
+    broadcast({
+      type: 'provider-added',
+      provider,
+      userId,
+      nickname,
+      capabilities: ['chat', 'code', 'analysis']
+    })
+    setProviders(prev => new Map(prev).set(provider, {
+      userId,
+      nickname,
+      type: provider
+    }))
+    toast.success('Provider added!')
+  }, [broadcast, userId, nickname])
+
+  const handleRemoveProvider = useCallback((provider: string) => {
+    setLocalProviders(prev => {
+      const next = new Set(prev)
+      next.delete(provider)
+      return next
+    })
+    localStorage.removeItem(`api_key_${provider}`)
+    broadcast({
+      type: 'provider-removed',
+      provider,
+      userId
+    })
+    setProviders(prev => {
+      const next = new Map(prev)
+      next.delete(provider)
+      return next
+    })
+    toast.success('Provider removed!')
+  }, [broadcast, userId])
 
   // Prepare peer data
   const allUsers = [
@@ -398,6 +449,8 @@ export default function RoomPage({
             broadcast={broadcast}
             sendTo={sendTo}
             providers={providers}
+            localProviders={localProviders}
+            onCanvasAdd={handleCanvasAdd}
           />
 
           {/* Share Modal */}
@@ -428,42 +481,4 @@ export default function RoomPage({
       )}
     </div>
   )
-}
-
-function handleAddProvider(provider: string, apiKey: string) {
-  setLocalProviders(prev => new Set(prev).add(provider))
-  localStorage.setItem(`api_key_${provider}`, apiKey)
-  broadcast({
-    type: 'provider-added',
-    provider,
-    userId,
-    nickname,
-    capabilities: ['chat', 'code', 'analysis']
-  })
-  setProviders(prev => new Map(prev).set(provider, {
-    userId,
-    nickname,
-    type: provider
-  }))
-  toast.success('Provider added!')
-}
-
-function handleRemoveProvider(provider: string) {
-  setLocalProviders(prev => {
-    const next = new Set(prev)
-    next.delete(provider)
-    return next
-  })
-  localStorage.removeItem(`api_key_${provider}`)
-  broadcast({
-    type: 'provider-removed',
-    provider,
-    userId
-  })
-  setProviders(prev => {
-    const next = new Map(prev)
-    next.delete(provider)
-    return next
-  })
-  toast.success('Provider removed!')
 } 

@@ -27,18 +27,25 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
     }
 
     // Create new connection
-    const connection = new P2PConnection(roomCode, userId, nickname)
+    const connection = new P2PConnection(
+      roomCode,
+      userId,
+      (data) => {
+        if (data.type === 'peer-connected' || data.type === 'peer-disconnected') {
+          setPeers(connection.getPeers())
+        }
+      },
+      (peer) => {
+        setPeers(prev => [...prev, peer])
+      },
+      (peerId) => {
+        setPeers(prev => prev.filter(p => p.id !== peerId))
+      }
+    )
     connectionRef.current = connection
     currentRoomRef.current = roomCode
 
     setConnectionState('connecting')
-
-    // Set up message handler
-    const unsubscribe = connection.onMessage((data) => {
-      if (data.type === 'peer-connected' || data.type === 'peer-disconnected') {
-        setPeers(connection.getPeers())
-      }
-    })
 
     // Connect
     const setupConnection = async () => {
@@ -66,7 +73,6 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
     // Store cleanup function
     cleanupRef.current = () => {
       clearInterval(interval)
-      unsubscribe()
       connection.disconnect()
       connectionRef.current = null
       currentRoomRef.current = null
