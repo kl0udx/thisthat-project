@@ -1,302 +1,188 @@
 import { supabase } from './supabase'
-import type { RealtimeChannel } from '@supabase/supabase-js'
-import { REALTIME_CHANNEL_STATES } from '@supabase/supabase-js'
+import { toast } from 'sonner'
 
-interface PeerConnection {
-  pc: RTCPeerConnection
-  dataChannel: RTCDataChannel | null
+interface Peer {
+  id: string
   userId: string
-  nickname: string
+  dataChannel?: RTCDataChannel
+  connection?: RTCPeerConnection
 }
 
 export class P2PConnection {
-  private _roomCode: string
+  private peers: Map<string, Peer> = new Map()
+  private roomId: string
   private userId: string
-  private nickname: string
-  private channel: RealtimeChannel | null = null
-  private peers: Map<string, PeerConnection> = new Map()
-  private messageHandlers: Set<(data: any) => void> = new Set()
-  private isConnected: boolean = false
-  
-  constructor(roomCode: string, userId: string, nickname: string) {
-    this._roomCode = roomCode
+  private onMessage: (data: any) => void
+  private onPeerJoined?: (peer: Peer) => void
+  private onPeerLeft?: (peerId: string) => void
+  private channel: any // Supabase channel for signaling
+
+  constructor(
+    roomId: string,
+    userId: string,
+    onMessage: (data: any) => void,
+    onPeerJoined?: (peer: Peer) => void,
+    onPeerLeft?: (peerId: string) => void
+  ) {
+    this.roomId = roomId
     this.userId = userId
-    this.nickname = nickname
+    this.onMessage = onMessage
+    this.onPeerJoined = onPeerJoined
+    this.onPeerLeft = onPeerLeft
   }
 
   async connect() {
-    // Always start fresh
-    if (this.channel) {
-      await this.cleanup()
-    }
+    // Create signaling channel
+    this.channel = supabase.channel(this.roomId, {
+      config: {
+        broadcast: { self: true }
+      }
+    })
 
-    console.log('Connecting to room:', this._roomCode)
-    
-    try {
-      // Create a new channel with unique name
-      const channelName = `room:${this._roomCode}:${Date.now()}`
-      this.channel = supabase.channel(channelName, {
-        config: {
-          presence: {
-            key: this.userId
+    // Handle presence
+    this.channel
+      .on('presence', { event: 'sync' }, () => {
+        const presenceState = this.channel.presenceState()
+        const peers = Object.keys(presenceState)
+        
+        // Remove peers that left
+        this.peers.forEach((peer, peerId) => {
+          if (!peers.includes(peerId)) {
+            this.disconnectPeer(peerId)
+          }
+        })
+
+        // Connect to new peers
+        peers.forEach(peerId => {
+          if (peerId !== this.userId && !this.peers.has(peerId)) {
+            this.connectToPeer(peerId)
+          }
+        })
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await this.channel.track({ userId: this.userId })
+        }
+      })
+
+    // Handle WebRTC signaling
+    this.channel
+      .on('broadcast', { event: 'offer' }, async ({ payload }: { payload: any }) => {
+        if (payload.targetId === this.userId) {
+          const peer = this.peers.get(payload.fromId)
+          if (peer?.connection) {
+            await peer.connection.setRemoteDescription(new RTCSessionDescription(payload.offer))
+            const answer = await peer.connection.createAnswer()
+            await peer.connection.setLocalDescription(answer)
+            this.channel.send({
+              type: 'broadcast',
+              event: 'answer',
+              payload: {
+                fromId: this.userId,
+                targetId: payload.fromId,
+                answer
+              }
+            })
           }
         }
       })
-      
-      // Set up handlers
-      this.channel
-        .on('broadcast', { event: 'signal' }, ({ payload }) => {
-          this.handleSignal(payload)
-        })
-        .on('presence', { event: 'sync' }, () => {
-          const state = this.channel!.presenceState()
-          this.handlePresenceSync(state)
-        })
-        .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-          console.log('User joined:', newPresences)
-          if (newPresences && newPresences.length > 0) {
-            this.handleUserJoined(key, newPresences[0])
+      .on('broadcast', { event: 'answer' }, async ({ payload }: { payload: any }) => {
+        if (payload.targetId === this.userId) {
+          const peer = this.peers.get(payload.fromId)
+          if (peer?.connection) {
+            await peer.connection.setRemoteDescription(new RTCSessionDescription(payload.answer))
           }
-        })
-        .on('presence', { event: 'leave' }, ({ key }) => {
-          console.log('User left:', key)
-          this.handleUserLeft(key)
-        })
-      
-      // Subscribe
-      await this.channel.subscribe()
-      
-      // Wait for subscription to be ready
-      await new Promise((resolve) => {
-        const checkSubscription = setInterval(() => {
-          if (this.channel?.state === REALTIME_CHANNEL_STATES.SUBSCRIBED) {
-            clearInterval(checkSubscription)
-            resolve(true)
+        }
+      })
+      .on('broadcast', { event: 'ice-candidate' }, async ({ payload }: { payload: any }) => {
+        if (payload.targetId === this.userId) {
+          const peer = this.peers.get(payload.fromId)
+          if (peer?.connection) {
+            await peer.connection.addIceCandidate(new RTCIceCandidate(payload.candidate))
           }
-        }, 100)
+        }
       })
-      
-      // Track presence
-      await this.channel.track({
-        userId: this.userId,
-        nickname: this.nickname,
-        joinedAt: new Date().toISOString()
-      })
-      
-      this.isConnected = true
-      console.log('Connected successfully')
-    } catch (error) {
-      console.error('Failed to connect:', error)
-      await this.cleanup()
-      throw error
-    }
   }
 
-  private async cleanup() {
-    if (this.channel) {
-      try {
-        if (this.channel.state === REALTIME_CHANNEL_STATES.SUBSCRIBED) {
-          await this.channel.untrack()
-        }
-        await this.channel.unsubscribe()
-        this.channel = null
-      } catch (error) {
-        console.error('Cleanup error:', error)
-        // Force cleanup
-        this.channel = null
-      }
-    }
-  }
-
-  async disconnect() {
-    console.log('Disconnecting...')
-    
-    // Close all peer connections
-    this.peers.forEach(peer => {
-      try {
-        peer.dataChannel?.close()
-        peer.pc.close()
-      } catch (e) {
-        console.error('Error closing peer connection:', e)
-      }
-    })
-    this.peers.clear()
-    
-    // Clean up channel
-    await this.cleanup()
-    
-    this.isConnected = false
-    this.messageHandlers.clear()
-  }
-
-  // Update the room code getter
-  get roomCode() {
-    return this._roomCode
-  }
-
-  private async handlePresenceSync(state: any) {
-    // Connect to all existing peers
-    Object.entries(state).forEach(([key, presences]: [string, any]) => {
-      if (Array.isArray(presences) && presences.length > 0) {
-        const presence = presences[0]
-        if (presence.userId !== this.userId && !this.peers.has(presence.userId)) {
-          this.createPeerConnection(presence.userId, presence.nickname, true)
-        }
-      }
-    })
-  }
-
-  private async handleUserJoined(key: string, presence: any) {
-    if (presence && presence.userId !== this.userId && !this.peers.has(presence.userId)) {
-      this.createPeerConnection(presence.userId, presence.nickname, true)
-    }
-  }
-
-  private handleUserLeft(key: string) {
-    // Remove peer by key
-    this.peers.forEach((peer, userId) => {
-      if (key === userId) {
-        this.removePeerConnection(userId)
-      }
-    })
-  }
-
-  private removePeerConnection(userId: string) {
-    const peer = this.peers.get(userId)
-    if (peer) {
-      try {
-        peer.dataChannel?.close()
-        peer.pc.close()
-      } catch (e) {
-        console.error('Error closing peer connection:', e)
-      }
-      this.peers.delete(userId)
-    }
-  }
-
-  private createPeerConnection(peerId: string, nickname: string, isPresence: boolean): PeerConnection {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }
-      ]
-    })
-
-    const dataChannel = pc.createDataChannel('chat', {
-      ordered: true
-    })
-
-    dataChannel.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        this.messageHandlers.forEach(handler => handler(data))
-      } catch (e) {
-        console.error('Error parsing message:', e)
-      }
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        this.sendSignal(peerId, {
-          type: 'candidate',
-          candidate: event.candidate
-        })
-      }
-    }
-
-    pc.ondatachannel = (event) => {
-      const channel = event.channel
-      channel.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          this.messageHandlers.forEach(handler => handler(data))
-        } catch (e) {
-          console.error('Error parsing message:', e)
-        }
-      }
-    }
-
-    const peer: PeerConnection = {
-      pc,
-      dataChannel,
+  private async connectToPeer(peerId: string) {
+    const peer: Peer = {
+      id: peerId,
       userId: peerId,
-      nickname
+      connection: new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      })
     }
 
-    this.peers.set(peerId, peer)
+    // Set up data channel
+    peer.dataChannel = peer.connection.createDataChannel('data')
+    this.setupDataChannel(peer.dataChannel)
 
-    if (isPresence) {
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
-          this.sendSignal(peerId, {
-            type: 'offer',
-            sdp: pc.localDescription
-          })
+    // Handle ICE candidates
+    peer.connection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.channel.send({
+          type: 'broadcast',
+          event: 'ice-candidate',
+          payload: {
+            fromId: this.userId,
+            targetId: peerId,
+            candidate: event.candidate
+          }
         })
-        .catch(error => {
-          console.error('Error creating offer:', error)
-        })
+      }
     }
 
-    return peer
-  }
-
-  private sendSignal(peerId: string, signal: any) {
-    if (!this.channel) return
-
+    // Create and send offer
+    const offer = await peer.connection.createOffer()
+    await peer.connection.setLocalDescription(offer)
     this.channel.send({
       type: 'broadcast',
-      event: 'signal',
+      event: 'offer',
       payload: {
-        from: this.userId,
-        to: peerId,
-        signal
+        fromId: this.userId,
+        targetId: peerId,
+        offer
       }
     })
+
+    this.peers.set(peerId, peer)
+    this.onPeerJoined?.(peer)
   }
 
-  private handleSignal(payload: any) {
-    const { from, to, signal } = payload
-
-    if (to !== this.userId) return
-
-    let peer = this.peers.get(from)
-    if (!peer) {
-      peer = this.createPeerConnection(from, '', false)
+  private setupDataChannel(channel: RTCDataChannel) {
+    channel.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        this.onMessage(data)
+      } catch (error) {
+        console.error('Error parsing message:', error)
+      }
     }
 
-    const pc = peer.pc
+    channel.onopen = () => {
+      console.log('Data channel opened')
+    }
 
-    if (signal.type === 'offer') {
-      pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-        .then(() => pc.createAnswer())
-        .then(answer => pc.setLocalDescription(answer))
-        .then(() => {
-          this.sendSignal(from, {
-            type: 'answer',
-            sdp: pc.localDescription
-          })
-        })
-        .catch(error => {
-          console.error('Error handling offer:', error)
-        })
-    } else if (signal.type === 'answer') {
-      pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
-        .catch(error => {
-          console.error('Error handling answer:', error)
-        })
-    } else if (signal.type === 'candidate') {
-      pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
-        .catch(error => {
-          console.error('Error adding ICE candidate:', error)
-        })
+    channel.onclose = () => {
+      console.log('Data channel closed')
+    }
+
+    channel.onerror = (error) => {
+      console.error('Data channel error:', error)
+      toast.error('Connection error occurred')
     }
   }
 
-  onMessage(handler: (data: any) => void) {
-    this.messageHandlers.add(handler)
-    return () => {
-      this.messageHandlers.delete(handler)
+  private disconnectPeer(peerId: string) {
+    const peer = this.peers.get(peerId)
+    if (peer) {
+      peer.dataChannel?.close()
+      peer.connection?.close()
+      this.peers.delete(peerId)
+      this.onPeerLeft?.(peerId)
     }
   }
 
@@ -315,10 +201,10 @@ export class P2PConnection {
     }
   }
 
-  getPeers() {
-    return Array.from(this.peers.values()).map(peer => ({
-      userId: peer.userId,
-      nickname: peer.nickname
-    }))
+  disconnect() {
+    this.peers.forEach((peer, peerId) => {
+      this.disconnectPeer(peerId)
+    })
+    this.channel?.unsubscribe()
   }
 } 

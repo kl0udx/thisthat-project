@@ -25,39 +25,77 @@ interface AIResponse {
 }
 
 export interface InfiniteCanvasRef {
-  setActiveTool: (tool: string) => void
   clearCanvas: () => void
+  deleteSelectedShapes: () => void
   addAIResponse: (response: AIResponse) => void
+  hasSelection: boolean
 }
 
 interface InfiniteCanvasProps {
-  onShapeAdd?: (shape: Line) => void
-  onAIResponseAdd?: (response: AIResponse) => void
+  onShapeAdd?: (shape: any) => void
+  onAIResponseAdd?: (response: any) => void
+  onShapeDelete?: (ids: string[]) => void
+  onClear?: () => void
+  activeTool?: 'pen' | 'select' | 'eraser'
 }
 
-const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ onShapeAdd, onAIResponseAdd }, ref) => {
+const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ 
+  onShapeAdd, 
+  onAIResponseAdd,
+  onShapeDelete,
+  onClear,
+  activeTool = 'pen'
+}, ref) => {
+  console.log('Active tool:', activeTool)
+  
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [selectedShapes, setSelectedShapes] = useState<Set<string>>(new Set())
   const [isDrawing, setIsDrawing] = useState(false)
+  const [isErasing, setIsErasing] = useState(false)
   const [currentPath, setCurrentPath] = useState<Point[]>([])
   const [paths, setPaths] = useState<Line[]>([])
-  const [camera, setCamera] = useState({ x: 12500, y: 12500 }) // Camera position in world space
+  const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null)
+  const [camera, setCamera] = useState({ x: 12500, y: 12500 })
   const [scale, setScale] = useState(1)
   const [isPanning, setIsPanning] = useState(false)
-  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 })
-  const [activeTool, setActiveTool] = useState('draw')
+  const [lastMousePos, setLastMousePos] = useState<Point>({ x: 0, y: 0 })
   const [aiResponses, setAIResponses] = useState<AIResponse[]>([])
+  const [selectedShape, setSelectedShape] = useState<string | null>(null)
 
   // Canvas dimensions
   const WORLD_SIZE = 25000
   const GRID_SIZE = 100
 
+  // Memoize the clearCanvas function
+  const clearCanvas = useCallback(() => {
+    setPaths([])
+    setAIResponses([])
+    onClear?.()
+  }, [onClear])
+
+  // Memoize the deleteSelectedShapes function
+  const deleteSelectedShapes = useCallback(() => {
+    if (selectedShapes.size > 0) {
+      const selectedIds = Array.from(selectedShapes)
+      setPaths(prev => prev.filter(path => !selectedIds.includes(path.id)))
+      onShapeDelete?.(selectedIds)
+      setSelectedShapes(new Set())
+    }
+  }, [selectedShapes, onShapeDelete])
+
+  // Memoize the addAIResponse function
+  const addAIResponse = useCallback((response: AIResponse) => {
+    setAIResponses(prev => [...prev, response])
+    onAIResponseAdd?.(response)
+  }, [onAIResponseAdd])
+
+  // Update useImperativeHandle with memoized functions
   useImperativeHandle(ref, () => ({
-    setActiveTool: (tool: string) => setActiveTool(tool),
-    clearCanvas: () => {
-      setPaths([])
-    },
-    addAIResponse
-  }))
+    clearCanvas,
+    deleteSelectedShapes,
+    addAIResponse,
+    hasSelection: selectedShapes.size > 0
+  }), [clearCanvas, deleteSelectedShapes, addAIResponse, selectedShapes])
 
   // Convert screen coordinates to world coordinates
   const screenToWorld = useCallback((screenX: number, screenY: number) => {
@@ -81,224 +119,27 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ onS
     }
   }, [camera, scale])
 
-  // Optimized draw function
-  const draw = useCallback(() => {
+  // Helper to convert React event to native event
+  const getNativeEvent = (e: React.MouseEvent<HTMLCanvasElement> | MouseEvent): MouseEvent => {
+    return e instanceof MouseEvent ? e : e.nativeEvent
+  }
+
+  // Get mouse position relative to canvas
+  const getMousePos = (e: React.MouseEvent<HTMLCanvasElement> | MouseEvent): Point => {
+    const nativeEvent = getNativeEvent(e)
     const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // Clear canvas with background
-    ctx.fillStyle = '#fafafa'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Calculate visible world bounds
-    const topLeft = screenToWorld(0, 0)
-    const bottomRight = screenToWorld(canvas.width, canvas.height)
-    
-    // Draw grid (only visible portion)
-    ctx.strokeStyle = '#e5e7eb'
-    ctx.lineWidth = 1
-    
-    // Calculate grid range with padding
-    const gridStartX = Math.floor(topLeft.x / GRID_SIZE) * GRID_SIZE - GRID_SIZE
-    const gridEndX = Math.ceil(bottomRight.x / GRID_SIZE) * GRID_SIZE + GRID_SIZE
-    const gridStartY = Math.floor(topLeft.y / GRID_SIZE) * GRID_SIZE - GRID_SIZE
-    const gridEndY = Math.ceil(bottomRight.y / GRID_SIZE) * GRID_SIZE + GRID_SIZE
-    
-    // Clamp to world bounds
-    const startX = Math.max(-GRID_SIZE, gridStartX)
-    const endX = Math.min(WORLD_SIZE + GRID_SIZE, gridEndX)
-    const startY = Math.max(-GRID_SIZE, gridStartY)
-    const endY = Math.min(WORLD_SIZE + GRID_SIZE, gridEndY)
-    
-    ctx.beginPath()
-    
-    // Vertical lines
-    for (let x = startX; x <= endX; x += GRID_SIZE) {
-      const screenX = worldToScreen(x, 0).x
-      ctx.moveTo(screenX, 0)
-      ctx.lineTo(screenX, canvas.height)
-    }
-    
-    // Horizontal lines
-    for (let y = startY; y <= endY; y += GRID_SIZE) {
-      const screenY = worldToScreen(0, y).y
-      ctx.moveTo(0, screenY)
-      ctx.lineTo(canvas.width, screenY)
-    }
-    
-    ctx.stroke()
-    
-    // Draw world bounds
-    ctx.strokeStyle = '#374151'
-    ctx.lineWidth = 3
-    const boundsTopLeft = worldToScreen(0, 0)
-    const boundsBottomRight = worldToScreen(WORLD_SIZE, WORLD_SIZE)
-    
-    ctx.strokeRect(
-      boundsTopLeft.x,
-      boundsTopLeft.y,
-      boundsBottomRight.x - boundsTopLeft.x,
-      boundsBottomRight.y - boundsTopLeft.y
-    )
-    
-    // Draw origin marker
-    if (topLeft.x <= 0 && bottomRight.x >= 0 && topLeft.y <= 0 && bottomRight.y >= 0) {
-      const origin = worldToScreen(0, 0)
-      ctx.fillStyle = '#ef4444'
-      ctx.beginPath()
-      ctx.arc(origin.x, origin.y, 5, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    
-    // Draw all paths
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    
-    paths.forEach(path => {
-      if (path.points.length < 2) return
-      
-      // Check if path is visible
-      const minX = Math.min(...path.points.map(p => p.x))
-      const maxX = Math.max(...path.points.map(p => p.x))
-      const minY = Math.min(...path.points.map(p => p.y))
-      const maxY = Math.max(...path.points.map(p => p.y))
-      
-      if (maxX < topLeft.x || minX > bottomRight.x || maxY < topLeft.y || minY > bottomRight.y) {
-        return // Skip invisible paths
-      }
-      
-      ctx.strokeStyle = path.color
-      ctx.lineWidth = path.width * scale
-      
-      ctx.beginPath()
-      const firstPoint = worldToScreen(path.points[0].x, path.points[0].y)
-      ctx.moveTo(firstPoint.x, firstPoint.y)
-      
-      for (let i = 1; i < path.points.length; i++) {
-        const point = worldToScreen(path.points[i].x, path.points[i].y)
-        ctx.lineTo(point.x, point.y)
-      }
-      
-      ctx.stroke()
-    })
-    
-    // Draw current path
-    if (currentPath.length > 0) {
-      ctx.strokeStyle = '#000000'
-      ctx.lineWidth = 2 * scale
-      
-      ctx.beginPath()
-      const firstPoint = worldToScreen(currentPath[0].x, currentPath[0].y)
-      ctx.moveTo(firstPoint.x, firstPoint.y)
-      
-      for (let i = 1; i < currentPath.length; i++) {
-        const point = worldToScreen(currentPath[i].x, currentPath[i].y)
-        ctx.lineTo(point.x, point.y)
-      }
-      
-      ctx.stroke()
-    }
-    
-    // Draw HUD
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
-    ctx.fillRect(0, canvas.height - 30, canvas.width, 30)
-    ctx.fillStyle = '#374151'
-    ctx.font = '12px monospace'
-    ctx.fillText(
-      `Pos: ${Math.round(camera.x)}, ${Math.round(camera.y)} | Zoom: ${Math.round(scale * 100)}% | Canvas: 25,000×25,000px | Shift+Wheel: Zoom, Shift+Drag: Pan`, 
-      10, 
-      canvas.height - 10
-    )
-    
-    // Pan mode indicator
-    if (isPanning) {
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'
-      ctx.fillRect(canvas.width / 2 - 60, 10, 120, 30)
-      ctx.fillStyle = 'white'
-      ctx.font = 'bold 14px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('PAN MODE', canvas.width / 2, 30)
-      ctx.textAlign = 'left'
-    }
-  }, [camera, scale, paths, currentPath, isPanning, screenToWorld, worldToScreen])
-
-  // Mouse handlers
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    if (e.shiftKey || activeTool === 'pan') {
-      setIsPanning(true)
-      setLastMousePos({ x: e.clientX, y: e.clientY })
-      if (canvasRef.current) {
-        canvasRef.current.style.cursor = 'grabbing'
-      }
-    } else {
-      setIsDrawing(true)
-      const worldPos = screenToWorld(x, y)
-      
-      // Clamp to world bounds
-      worldPos.x = Math.max(0, Math.min(WORLD_SIZE, worldPos.x))
-      worldPos.y = Math.max(0, Math.min(WORLD_SIZE, worldPos.y))
-      
-      setCurrentPath([worldPos])
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: nativeEvent.clientX - rect.left,
+      y: nativeEvent.clientY - rect.top
     }
   }
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isPanning && e.buttons === 1) {
-      const dx = e.clientX - lastMousePos.x
-      const dy = e.clientY - lastMousePos.y
-      
-      // Pan in screen space
-      setCamera({
-        x: camera.x - dx / scale,
-        y: camera.y - dy / scale
-      })
-      
-      setLastMousePos({ x: e.clientX, y: e.clientY })
-    } else if (isDrawing) {
-      const rect = canvasRef.current?.getBoundingClientRect()
-      if (!rect) return
-      
-      const x = e.clientX - rect.left
-      const y = e.clientY - rect.top
-      const worldPos = screenToWorld(x, y)
-      
-      // Clamp to world bounds
-      worldPos.x = Math.max(0, Math.min(WORLD_SIZE, worldPos.x))
-      worldPos.y = Math.max(0, Math.min(WORLD_SIZE, worldPos.y))
-      
-      setCurrentPath([...currentPath, worldPos])
-    }
-  }
+  // Get current mouse position
+  const getCurrentMousePos = () => currentMousePos
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawing && currentPath.length > 0) {
-      const newPath: Line = {
-        points: [...currentPath],
-        color: '#000000',
-        width: 2,
-        id: `path-${Date.now()}`
-      }
-      setPaths(prev => [...prev, newPath])
-      onShapeAdd?.(newPath)
-    }
-    setIsDrawing(false)
-    setCurrentPath([])
-    
-    if (canvasRef.current) {
-      canvasRef.current.style.cursor = e.shiftKey || activeTool === 'pan' ? 'grab' : 'crosshair'
-    }
-  }
-
-  // Keyboard handlers
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && !e.repeat) {
@@ -312,16 +153,18 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ onS
     const handleKeyUp = (e: KeyboardEvent) => {
       if (!e.shiftKey) {
         setIsPanning(false)
+        setIsDrawing(false) // Also stop drawing
         if (canvasRef.current) {
-          canvasRef.current.style.cursor = activeTool === 'pan' ? 'grab' : 'crosshair'
+          canvasRef.current.style.cursor = 'crosshair'
         }
       }
     }
 
     const handleBlur = () => {
       setIsPanning(false)
+      setIsDrawing(false)
       if (canvasRef.current) {
-        canvasRef.current.style.cursor = activeTool === 'pan' ? 'grab' : 'crosshair'
+        canvasRef.current.style.cursor = 'crosshair'
       }
     }
 
@@ -334,10 +177,292 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ onS
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [activeTool])
+  }, [])
 
-  // Wheel handler
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+  // Select all shapes
+  const selectAll = () => {
+    const allIds = new Set(paths.map(p => p.id))
+    setSelectedShapes(allIds)
+  }
+
+  // Helper to find shape at point
+  const findShapeAtPoint = (x: number, y: number) => {
+    // Simple hit detection - check if click is near any path
+    for (const path of paths) {
+      for (let i = 0; i < path.points.length; i++) {
+        const px = path.points[i].x
+        const py = path.points[i].y
+        const distance = Math.sqrt(Math.pow(x - px, 2) + Math.pow(y - py, 2))
+        if (distance < 10) {
+          return path
+        }
+      }
+    }
+    return null
+  }
+
+  // Handle eraser functionality
+  const handleEraser = useCallback((worldX: number, worldY: number) => {
+    const eraserRadius = 20 / scale // Eraser size adjusts with zoom
+    
+    setPaths(prev => prev.filter(path => {
+      // Check if any point in the path is within eraser radius
+      return !path.points.some(point => {
+        const distance = Math.sqrt(
+          Math.pow(point.x - worldX, 2) + 
+          Math.pow(point.y - worldY, 2)
+        )
+        return distance < eraserRadius
+      })
+    }))
+  }, [scale])
+
+  // Update mouse event handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
+    const nativeEvent = getNativeEvent(e)
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    
+    const x = nativeEvent.clientX - rect.left
+    const y = nativeEvent.clientY - rect.top
+    
+    if (nativeEvent.shiftKey || isPanning) {
+      // Start panning
+      setLastMousePos({ x: nativeEvent.clientX, y: nativeEvent.clientY })
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = 'grabbing'
+      }
+    } else if (nativeEvent.button === 0) {
+      // Left click
+      if (activeTool === 'eraser' && !nativeEvent.shiftKey && !isPanning) {
+        console.log('Starting eraser')
+        setIsErasing(true)
+        const worldPos = screenToWorld(x, y)
+        handleEraser(worldPos.x, worldPos.y)
+      } else if (activeTool === 'select') {
+        // Handle selection
+        const worldPos = screenToWorld(x, y)
+        const clickedShape = findShapeAtPoint(worldPos.x, worldPos.y)
+        if (clickedShape) {
+          setSelectedShapes(new Set([clickedShape.id]))
+        } else {
+          setSelectedShapes(new Set())
+        }
+      } else if (activeTool === 'pen') {
+        // Start drawing
+        setIsDrawing(true)
+        const worldPos = screenToWorld(x, y)
+        setCurrentPath([worldPos])
+      }
+    }
+  }, [isPanning, screenToWorld, activeTool, handleEraser])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
+    const nativeEvent = getNativeEvent(e)
+    if ((nativeEvent.shiftKey || isPanning) && nativeEvent.buttons === 1) {
+      // Panning
+      const dx = nativeEvent.clientX - lastMousePos.x
+      const dy = nativeEvent.clientY - lastMousePos.y
+      setCamera({
+        x: camera.x - dx / scale,
+        y: camera.y - dy / scale
+      })
+      setLastMousePos({ x: nativeEvent.clientX, y: nativeEvent.clientY })
+    } else if (isErasing && activeTool === 'eraser') {
+      console.log('Erasing...')
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = nativeEvent.clientX - rect.left
+      const y = nativeEvent.clientY - rect.top
+      const worldPos = screenToWorld(x, y)
+      handleEraser(worldPos.x, worldPos.y)
+    } else if (isDrawing && nativeEvent.buttons === 1) {
+      // Drawing
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = nativeEvent.clientX - rect.left
+      const y = nativeEvent.clientY - rect.top
+      const worldPos = screenToWorld(x, y)
+      setCurrentPath([...currentPath, worldPos])
+    }
+  }, [isPanning, isDrawing, isErasing, lastMousePos, camera, scale, currentPath, screenToWorld, activeTool, handleEraser])
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
+    if (isErasing) {
+      setIsErasing(false)
+    } else if (isDrawing && currentPath.length > 1) {
+      const newLine: Line = {
+        points: currentPath,
+        color: '#000000',
+        width: 2,
+        id: `line-${Date.now()}`
+      }
+      setPaths([...paths, newLine])
+      onShapeAdd?.(newLine)
+    }
+    setIsDrawing(false)
+    setCurrentPath([])
+  }, [isErasing, isDrawing, currentPath, paths, onShapeAdd])
+
+  // Drawing function
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Save context state
+    ctx.save()
+
+    // Apply camera transform
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.scale(scale, scale)
+    ctx.translate(-camera.x, -camera.y)
+
+    // Draw grid
+    drawGrid(ctx)
+
+    // Draw paths
+    paths.forEach(path => {
+      drawPath(ctx, path)
+    })
+
+    // Draw current path
+    if (currentPath.length > 0) {
+      // Create a temporary path for drawing
+      const tempPath: Line = {
+        points: currentPath,
+        color: '#000000',
+        width: 2,
+        id: 'temp' // Temporary ID for drawing
+      }
+      drawPath(ctx, tempPath)
+    }
+
+    // Restore context state
+    ctx.restore()
+
+    // Draw help text
+    ctx.fillStyle = '#666'
+    ctx.font = '12px monospace'
+    ctx.fillText(
+      `Position: ${Math.round(camera.x)}, ${Math.round(camera.y)} | Zoom: ${Math.round(scale * 100)}% | Canvas: 25,000×25,000px | Shift+Wheel: Zoom, Shift+Drag: Pan`, 
+      10, 
+      canvas.height - 10
+    )
+  }, [camera, scale, paths, currentPath])
+
+  // Set up canvas and event listeners
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      console.warn('Canvas ref is null during setup')
+      return
+    }
+
+    console.log('Setting up canvas')
+
+    // Initial resize
+    const handleResize = () => {
+      canvas.width = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    // Add event listeners
+    canvas.addEventListener('mousedown', handleMouseDown)
+    canvas.addEventListener('mousemove', handleMouseMove)
+    canvas.addEventListener('mouseup', handleMouseUp)
+    canvas.addEventListener('mouseleave', handleMouseUp)
+
+    // Animation loop
+    let animationFrameId: number
+    const animate = () => {
+      draw()
+      animationFrameId = requestAnimationFrame(animate)
+    }
+    animate()
+
+    console.log('Canvas setup complete')
+
+    return () => {
+      console.log('Cleaning up canvas')
+      window.removeEventListener('resize', handleResize)
+      canvas.removeEventListener('mousedown', handleMouseDown)
+      canvas.removeEventListener('mousemove', handleMouseMove)
+      canvas.removeEventListener('mouseup', handleMouseUp)
+      canvas.removeEventListener('mouseleave', handleMouseUp)
+      cancelAnimationFrame(animationFrameId)
+    }
+  }, [draw, handleMouseDown, handleMouseMove, handleMouseUp])
+
+  // Update cursor based on tool
+  useEffect(() => {
+    if (canvasRef.current) {
+      if (activeTool === 'eraser') {
+        canvasRef.current.style.cursor = 'crosshair'
+      } else if (isPanning) {
+        canvasRef.current.style.cursor = 'grab'
+      } else {
+        canvasRef.current.style.cursor = 'crosshair'
+      }
+    }
+  }, [activeTool, isPanning])
+
+  // Handle AI response card movement
+  const handleCardMove = (id: string, x: number, y: number) => {
+    setAIResponses(prev => prev.map(card => 
+      card.id === id ? { ...card, position: { x, y } } : card
+    ))
+  }
+
+  // Handle AI response card removal
+  const handleCardRemove = (id: string) => {
+    setAIResponses(prev => prev.filter(card => card.id !== id))
+  }
+
+  // Add helper functions for drawing
+  const drawGrid = (ctx: CanvasRenderingContext2D) => {
+    ctx.strokeStyle = '#e5e7eb'
+    ctx.lineWidth = 1
+    const gridSize = 20
+
+    // Draw vertical lines
+    for (let x = 0; x < WORLD_SIZE; x += gridSize) {
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x, WORLD_SIZE)
+      ctx.stroke()
+    }
+
+    // Draw horizontal lines
+    for (let y = 0; y < WORLD_SIZE; y += gridSize) {
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(WORLD_SIZE, y)
+      ctx.stroke()
+    }
+  }
+
+  const drawPath = (ctx: CanvasRenderingContext2D, path: Line) => {
+    ctx.strokeStyle = path.color
+    ctx.lineWidth = path.width
+    ctx.beginPath()
+    ctx.moveTo(path.points[0].x, path.points[0].y)
+    for (let i = 1; i < path.points.length; i++) {
+      ctx.lineTo(path.points[i].x, path.points[i].y)
+    }
+    ctx.stroke()
+  }
+
+  // Update the wheel event handler to use React.WheelEvent
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    // Only zoom if Shift is pressed
     if (!e.shiftKey) return
     
     e.preventDefault()
@@ -369,75 +494,61 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ onS
       x: camera.x + (x - newScreenPos.x) / newScale,
       y: camera.y + (y - newScreenPos.y) / newScale
     })
-  }
+  }, [camera, scale, screenToWorld])
 
-  // Canvas setup and animation loop
+  // Add ResizeObserver setup
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const handleResize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight - 64
-    }
+    const container = canvas.parentElement
+    if (!container) return
 
+    // Initial resize
     handleResize()
-    window.addEventListener('resize', handleResize)
 
-    // Animation loop for smooth rendering
-    let animationId: number
-    const animate = () => {
-      draw()
-      animationId = requestAnimationFrame(animate)
-    }
-    animate()
+    // Set up ResizeObserver
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize()
+    })
+
+    resizeObserver.observe(container)
 
     return () => {
-      window.removeEventListener('resize', handleResize)
-      cancelAnimationFrame(animationId)
+      resizeObserver.disconnect()
     }
-  }, [draw])
+  }, [])
 
-  // Handle AI response card movement
-  const handleCardMove = (id: string, x: number, y: number) => {
-    setAIResponses(prev => prev.map(card => 
-      card.id === id ? { ...card, position: { x, y } } : card
-    ))
-  }
+  // Update handleResize function
+  const handleResize = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-  // Handle AI response card removal
-  const handleCardRemove = (id: string) => {
-    setAIResponses(prev => prev.filter(card => card.id !== id))
-  }
+    const container = canvas.parentElement
+    if (!container) return
 
-  // Add AI response to canvas
-  const addAIResponse = (data: any) => {
-    const id = crypto.randomUUID()
-    const response: AIResponse = {
-      id,
-      content: data.content,
-      prompt: data.prompt,
-      provider: data.provider,
-      executedBy: data.executedBy,
-      position: data.position === 'auto' 
-        ? { x: camera.x + 100, y: camera.y + 100 }
-        : data.position
-    }
+    // Use the container's dimensions
+    canvas.width = container.clientWidth
+    canvas.height = container.clientHeight
     
-    setAIResponses(prev => [...prev, response])
-    onAIResponseAdd?.(response)
-  }
+    console.log('Canvas resized to:', canvas.width, 'x', canvas.height)
+  }, [])
 
   return (
     <div className="relative w-full h-[calc(100vh-64px)] overflow-hidden bg-gray-50">
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 cursor-crosshair"
+        className="block w-full h-full cursor-crosshair"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        style={{
+          cursor: activeTool === 'eraser' ? 'crosshair' : 
+                  isPanning ? 'grab' : 
+                  'crosshair'
+        }}
       />
       
       {/* AI Response Cards */}

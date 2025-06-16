@@ -7,15 +7,29 @@ import { CanvasToolbar } from '@/components/room/canvas-toolbar'
 import { ConnectionStatus } from '@/components/room/connection-status'
 import { ShareModal } from '@/components/room/share-modal'
 import { ChatPanel } from '@/components/room/chat-panel'
-import { AIProviderButton } from '@/components/room/ai-provider-button'
-import { AIResponseCard } from '@/components/room/ai-response-card'
+import { AIProviderModal } from '@/components/room/ai-provider-modal'
 import { NicknameModal } from '@/components/room/nickname-modal'
 import { useP2PConnection } from '@/hooks/useP2PConnection'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { generateNickname, getAvatarColor } from '@/lib/utils'
+import { useRouter } from "next/navigation"
+import { P2PConnection } from "@/lib/webrtc"
+import { useLocalStorage } from "@/hooks/use-local-storage"
+import { toast } from 'sonner'
+import { useConnection } from "@/hooks/use-connection"
+import { useBroadcast } from "@/hooks/use-broadcast"
+import { useSendTo } from "@/hooks/use-send-to"
+import { useProviders } from "@/hooks/use-providers"
+import { useCanvasAdd } from "@/hooks/use-canvas-add"
+import { useTool } from "@/hooks/use-tool"
+import { useSelection } from "@/hooks/use-selection"
+import { useClearCanvas } from "@/hooks/use-clear-canvas"
+import { useDeleteSelection } from "@/hooks/use-delete-selection"
+import { useShapeAdd } from "@/hooks/use-shape-add"
+import { useShapeDelete } from "@/hooks/use-shape-delete"
 
 export default function RoomPage({
   params,
@@ -23,18 +37,27 @@ export default function RoomPage({
   params: Promise<{ code: string }>
 }) {
   const { code } = use(params)
+  const router = useRouter()
   
   // All useState hooks at the top level
   const [mounted, setMounted] = useState(false)
-  const [nickname, setNickname] = useState('')
+  const [nickname, setNickname] = useState<string | null>(null)
   const [showNicknameModal, setShowNicknameModal] = useState(true)
   const [suggestedNickname] = useState(() => generateNickname())
-  const [userId] = useState(() => `user-${Date.now()}`)
+  const [userId] = useState(() => {
+    const stored = localStorage.getItem('userId')
+    if (stored) return stored
+    const newId = crypto.randomUUID()
+    localStorage.setItem('userId', newId)
+    return newId
+  })
   const [showShareModal, setShowShareModal] = useState(false)
   const [showProviderModal, setShowProviderModal] = useState(false)
   const [providers, setProviders] = useState<Map<string, { userId: string; nickname: string; type: string }>>(new Map())
   const [localProviders, setLocalProviders] = useState<Set<string>>(new Set())
   const [canvasObjects, setCanvasObjects] = useState<any[]>([])
+  const [activeTool, setActiveTool] = useState('pen')
+  const [hasSelection, setHasSelection] = useState(false)
   const canvasRef = useRef<InfiniteCanvasRef>(null)
   
   // Always call useP2PConnection, but pass null when we shouldn't connect
@@ -100,15 +123,75 @@ export default function RoomPage({
     return unsubscribe
   }, [connection])
 
-  // Handler functions
-  const handleSetNickname = useCallback(() => {
-    const finalNickname = nickname || suggestedNickname
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('nickname', finalNickname)
+  // Add this effect to handle provider messages
+  useEffect(() => {
+    if (!connection) return
+
+    const unsubscribe = connection.onMessage((message: any) => {
+      if (message.type === 'provider-added') {
+        setProviders(prev => new Map(prev).set(message.provider, {
+          userId: message.userId,
+          nickname: message.nickname,
+          type: message.provider
+        }))
+      } else if (message.type === 'provider-removed') {
+        setProviders(prev => {
+          const next = new Map(prev)
+          next.delete(message.provider)
+          return next
+        })
+      }
+    })
+
+    return unsubscribe
+  }, [connection])
+
+  // Add this effect to handle disconnection
+  useEffect(() => {
+    if (!connection) return
+
+    const unsubscribe = connection.onMessage((message: any) => {
+      if (message.type === 'peer-disconnected') {
+        // Remove all providers from the disconnected peer
+        setProviders(prev => {
+          const next = new Map(prev)
+          for (const [provider, info] of next.entries()) {
+            if (info.userId === message.userId) {
+              next.delete(provider)
+            }
+          }
+          return next
+        })
+      }
+    })
+
+    return unsubscribe
+  }, [connection])
+
+  // Add this effect to load local providers on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Load local providers from localStorage
+    const storedProviders = localStorage.getItem('local_providers')
+    if (storedProviders) {
+      setLocalProviders(new Set(JSON.parse(storedProviders)))
     }
-    setNickname(finalNickname)
-    setShowNicknameModal(false)
-  }, [nickname, suggestedNickname])
+  }, [])
+
+  // Add this effect to save local providers when they change
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    localStorage.setItem('local_providers', JSON.stringify(Array.from(localProviders)))
+  }, [localProviders])
+
+  // Handler functions
+  const handleSetNickname = (newNickname: string) => {
+    setNickname(newNickname)
+    localStorage.setItem('nickname', newNickname)
+    toast.success('Nickname set!')
+  }
 
   const handleShapeAdd = useCallback((shape: any) => {
     broadcast({
@@ -164,6 +247,34 @@ export default function RoomPage({
     })
   }, [broadcast])
 
+  // Add this handler function
+  const handleShapeDelete = useCallback((shapeId: string) => {
+    // Broadcast deletion to peers
+    broadcast({
+      type: 'canvas-object-remove',
+      objectId: shapeId
+    })
+  }, [broadcast])
+
+  // Add handlers
+  const handleToolChange = (tool: string) => {
+    setActiveTool(tool)
+  }
+
+  const handleClearCanvas = useCallback(() => {
+    if (window.canvasTools) {
+      window.canvasTools.clearCanvas()
+    }
+    // Broadcast clear event
+    broadcast({ type: 'canvas-clear' })
+  }, [broadcast])
+
+  const handleDeleteSelection = useCallback(() => {
+    if (window.canvasTools) {
+      window.canvasTools.deleteSelectedShapes()
+    }
+  }, [])
+
   // Prepare peer data
   const allUsers = [
     { 
@@ -187,58 +298,99 @@ export default function RoomPage({
   }
 
   return (
-    <>
-      <NicknameModal
-        isOpen={showNicknameModal}
-        onClose={() => setShowNicknameModal(false)}
-        onSubmit={handleSetNickname}
-        suggestedNickname={suggestedNickname}
-      />
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* Nickname Modal */}
+      <Dialog open={showNicknameModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter Your Nickname</DialogTitle>
+            <DialogDescription>
+              Choose a nickname to display to other users in the room.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleSetNickname(nickname || suggestedNickname); }}>
+            <div className="space-y-4">
+              <Input
+                type="text"
+                placeholder="Enter your nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                autoFocus
+              />
+              <Button type="submit" className="w-full">
+                Join Room
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      <div className="min-h-screen bg-background">
-        <RoomHeader
-          roomCode={code}
-          peers={peers}
-          currentUserId={userId}
-          isHost={true}
-        />
-
-        <main className="pt-16">
-          <div className="relative">
+      {/* Main Room UI */}
+      {!showNicknameModal && (
+        <>
+          <RoomHeader
+            roomCode={code}
+            currentUserId={userId}
+            peers={allUsers}
+            isHost={true}
+          />
+          
+          {/* Canvas container - flex-1 makes it fill remaining height */}
+          <div className="flex-1 relative overflow-hidden">
             <InfiniteCanvas
               ref={canvasRef}
-              onShapeAdd={handleShapeAdd}
-              onAIResponseAdd={handleCanvasAdd}
+              onShapeAdd={(shape) => {
+                // Broadcast shape to peers
+                broadcast({
+                  type: 'canvas-object-add',
+                  object: shape
+                })
+              }}
+              onShapeDelete={(ids) => {
+                broadcast({ type: 'shapes-delete', shapeIds: ids })
+              }}
+              onClear={() => {
+                broadcast({ type: 'canvas-clear' })
+              }}
+              activeTool={activeTool}
             />
-            <CanvasToolbar canvasRef={canvasRef} />
+            
+            {/* Canvas toolbar - positioned over canvas */}
+            <CanvasToolbar 
+              activeTool={activeTool}
+              onToolChange={handleToolChange}
+              onClearCanvas={handleClearCanvas}
+              hasSelection={hasSelection}
+              onDeleteSelection={handleDeleteSelection}
+              onOpenAIProviders={() => setShowProviderModal(true)}
+              activeProviders={providers.size}
+            />
+            
+            {/* AI Response Cards Layer */}
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="relative w-full h-full">
+                {canvasObjects.map(obj => (
+                  obj.type === 'ai-response' && (
+                    <div key={obj.id} className="pointer-events-auto">
+                      <AIResponseCard
+                        {...obj}
+                      />
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* AI Response Cards */}
-          {canvasObjects.map(obj => (
-            <AIResponseCard
-              key={obj.id}
-              id={obj.id}
-              content={obj.content}
-              prompt={obj.prompt}
-              provider={obj.provider}
-              executedBy={obj.executedBy}
-              position={obj.position}
-              onMove={handleObjectMove}
-              onRemove={handleObjectRemove}
-            />
-          ))}
-
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4">
+          {/* Connection Status */}
+          <div className="fixed bottom-4 right-4 z-50">
             <ConnectionStatus
               state={connectionState}
-              peerCount={peers.length}
-            />
-            <AIProviderButton
-              providerCount={providers.size}
-              onClick={() => setShowProviderModal(true)}
+              peerCount={allUsers.length}
             />
           </div>
 
+          {/* Chat Panel */}
           <ChatPanel
             userId={userId}
             nickname={nickname}
@@ -246,16 +398,72 @@ export default function RoomPage({
             broadcast={broadcast}
             sendTo={sendTo}
             providers={providers}
-            onCanvasAdd={handleCanvasAdd}
           />
-        </main>
-      </div>
 
-      <ShareModal
-        roomCode={code}
-        open={showShareModal}
-        onOpenChange={setShowShareModal}
-      />
-    </>
+          {/* Share Modal */}
+          <ShareModal
+            roomCode={code}
+            open={showShareModal}
+            onOpenChange={setShowShareModal}
+          />
+
+          {/* AI Provider Modal */}
+          {showProviderModal && (
+            <AIProviderModal
+              isOpen={showProviderModal}
+              onClose={() => setShowProviderModal(false)}
+              onProviderAdded={(provider, apiKey) => {
+                handleAddProvider(provider, apiKey)
+              }}
+              onProviderRemoved={(provider) => {
+                handleRemoveProvider(provider)
+              }}
+              existingProviders={new Set([
+                ...Array.from(localProviders || []), 
+                ...Array.from(providers?.keys() || [])
+              ])}
+            />
+          )}
+        </>
+      )}
+    </div>
   )
+}
+
+function handleAddProvider(provider: string, apiKey: string) {
+  setLocalProviders(prev => new Set(prev).add(provider))
+  localStorage.setItem(`api_key_${provider}`, apiKey)
+  broadcast({
+    type: 'provider-added',
+    provider,
+    userId,
+    nickname,
+    capabilities: ['chat', 'code', 'analysis']
+  })
+  setProviders(prev => new Map(prev).set(provider, {
+    userId,
+    nickname,
+    type: provider
+  }))
+  toast.success('Provider added!')
+}
+
+function handleRemoveProvider(provider: string) {
+  setLocalProviders(prev => {
+    const next = new Set(prev)
+    next.delete(provider)
+    return next
+  })
+  localStorage.removeItem(`api_key_${provider}`)
+  broadcast({
+    type: 'provider-removed',
+    provider,
+    userId
+  })
+  setProviders(prev => {
+    const next = new Map(prev)
+    next.delete(provider)
+    return next
+  })
+  toast.success('Provider removed!')
 } 
