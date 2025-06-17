@@ -73,13 +73,13 @@ export function AIResponseCard({
   const getProviderInfo = () => {
     switch (provider) {
       case 'anthropic':
-        return { name: 'Claude', color: 'bg-purple-500', icon: '🧠' }
+        return { name: 'Claude', color: 'bg-purple-500', logo: '/logos/claude.png' }
       case 'openai':
-        return { name: 'ChatGPT', color: 'bg-green-500', icon: '🤖' }
+        return { name: 'ChatGPT', color: 'bg-green-500', logo: '/logos/openai.png' }
       case 'google':
-        return { name: 'Gemini', color: 'bg-blue-500', icon: '✨' }
+        return { name: 'Gemini', color: 'bg-blue-500', logo: '/logos/gemini.png' }
       default:
-        return { name: provider, color: 'bg-gray-500', icon: '🤖' }
+        return { name: provider, color: 'bg-gray-500', logo: '' }
     }
   }
 
@@ -135,10 +135,13 @@ export function AIResponseCard({
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3 flex-1 drag-handle cursor-grab">
               <div className={cn(
-                "w-10 h-10 rounded-lg flex items-center justify-center text-lg",
-                providerInfo.color
+                "w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white"
               )}>
-                {providerInfo.icon}
+                {providerInfo.logo ? (
+                  <img src={providerInfo.logo} alt={providerInfo.name + ' logo'} className="w-8 h-8 object-contain" />
+                ) : (
+                  <span>{providerInfo.name[0]}</span>
+                )}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
