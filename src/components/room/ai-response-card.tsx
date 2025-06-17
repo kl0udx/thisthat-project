@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Copy, X, GripVertical } from 'lucide-react'
+import { Copy, X, GripVertical, Code2, Eye } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface AIResponseCardProps {
   id: string
@@ -84,6 +85,33 @@ export function AIResponseCard({
 
   const providerInfo = getProviderInfo()
 
+  const detectCode = (text: string) => {
+    // Only consider it code if it has actual code blocks with ```
+    return text.includes('```')
+  }
+
+  const extractCode = (text: string) => {
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
+    const matches = [...text.matchAll(codeBlockRegex)]
+    if (matches.length > 0) {
+      // Extract just the code blocks
+      const codeBlocks = matches.map(match => ({
+        language: match[1] || 'javascript',
+        code: match[2].trim()
+      }))
+      return {
+        hasCode: true,
+        codeBlocks,
+        fullText: text
+      }
+    }
+    return {
+      hasCode: false,
+      codeBlocks: [],
+      fullText: text
+    }
+  }
+
   return (
     <motion.div
       ref={cardRef}
@@ -146,11 +174,57 @@ export function AIResponseCard({
         </CardHeader>
         
         <CardContent>
-          <div className="prose prose-sm max-w-none dark:prose-invert">
-            <div className="max-h-[400px] overflow-y-auto">
-              <p className="whitespace-pre-wrap text-sm">{content}</p>
-            </div>
-          </div>
+          {(() => {
+            const codeInfo = extractCode(content)
+            if (codeInfo.hasCode) {
+              return (
+                <Tabs defaultValue="code" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="code">
+                      <Code2 className="w-4 h-4 mr-2" />
+                      Code
+                    </TabsTrigger>
+                    <TabsTrigger value="full">
+                      <Eye className="w-4 h-4 mr-2" />
+                      Full Response
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="code" className="mt-4 space-y-4">
+                    {codeInfo.codeBlocks.map((block, index) => (
+                      <div key={index}>
+                        {codeInfo.codeBlocks.length > 1 && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Code block {index + 1} ({block.language})
+                          </p>
+                        )}
+                        <div className="rounded-md bg-gray-900 p-4 overflow-auto max-h-[300px]">
+                          <pre className="text-sm text-gray-100">
+                            <code>{block.code}</code>
+                          </pre>
+                        </div>
+                      </div>
+                    ))}
+                  </TabsContent>
+                  <TabsContent value="full" className="mt-4">
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <div className="max-h-[400px] overflow-y-auto">
+                        <p className="whitespace-pre-wrap text-sm">{content}</p>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              )
+            } else {
+              // No code blocks - just show as regular text
+              return (
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <div className="max-h-[400px] overflow-y-auto">
+                    <p className="whitespace-pre-wrap text-sm">{content}</p>
+                  </div>
+                </div>
+              )
+            }
+          })()}
         </CardContent>
       </Card>
     </motion.div>
