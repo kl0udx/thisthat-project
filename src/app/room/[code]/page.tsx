@@ -425,6 +425,8 @@ export default function RoomPage({
                     <div key={obj.id} className="pointer-events-auto">
                       <AIResponseCard
                         {...obj}
+                        onMove={handleObjectMove}
+                        onRemove={handleObjectRemove}
                       />
                     </div>
                   )
