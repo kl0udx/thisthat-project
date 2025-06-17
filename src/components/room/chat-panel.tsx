@@ -31,23 +31,32 @@ interface Message {
 interface ChatPanelProps {
   userId: string
   nickname: string
-  connection: any
+  connection: P2PConnection | null
   broadcast: (data: any) => void
-  sendTo: (userId: string, data: any) => void
-  providers: Map<string, { userId: string; nickname: string; type: string }>
+  sendTo: (peerId: string, data: any) => void
+  providers: Map<string, Set<string>>
   localProviders: Set<string>
   onCanvasAdd?: (data: any) => void
+  selectedObjects?: Array<{
+    id: string
+    type: string
+    content?: string
+    prompt?: string
+    src?: string
+    provider?: string
+  }>
 }
 
-export function ChatPanel({ 
-  userId, 
-  nickname, 
-  connection, 
-  broadcast, 
+export function ChatPanel({
+  userId,
+  nickname,
+  connection,
+  broadcast,
   sendTo,
   providers,
   localProviders,
-  onCanvasAdd 
+  onCanvasAdd,
+  selectedObjects
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -135,36 +144,67 @@ export function ChatPanel({
       console.log('Detected AI command!')
       console.log('Command:', parsed.command)
       console.log('Prompt:', parsed.prompt)
+      console.log('About to call handleAICommand...')
       handleAICommand(parsed, userMessage.id)
+      return // Important: return to prevent normal message handling
     }
 
     setInput('')
   }
 
   const handleAICommand = async (parsed: any, messageId: string) => {
-    console.log('=== handleAICommand called ===')
-    console.log('Parsed:', parsed)
-    console.log('Message ID:', messageId)
+    console.log('🚀 handleAICommand ACTUALLY CALLED!', { parsed, messageId })
+    console.log('Provider type:', parsed.command === 'ai' ? 'anthropic' : parsed.command)
+    console.log('Local providers:', localProviders)
+    console.log('Providers map:', providers)
 
-    // Map command to provider
-    const providerMap: { [key: string]: string } = {
-      'ai': 'anthropic', // default to anthropic
+    // Map command to provider type
+    const commandMap: Record<string, string> = {
+      'ai': 'anthropic',
       'claude': 'anthropic',
       'chatgpt': 'openai',
+      'gpt': 'openai',
       'gemini': 'google'
     }
 
-    const providerType = providerMap[parsed.command] || parsed.command
-    console.log('Provider type:', providerType)
+    const providerType = commandMap[parsed.command] || parsed.command
+    console.log('Mapped provider type:', providerType)
+    console.log('Do we have this provider locally?', localProviders.has(providerType))
 
-    // Check if we have this provider locally
     if (localProviders.has(providerType)) {
-      console.log('We have this provider locally!')
-
+      console.log('✅ We have this provider locally! Provider type:', providerType)
       const apiKey = localStorage.getItem(`api_key_${providerType}`)
       if (!apiKey) {
         console.error('No API key found!')
         return
+      }
+
+      // Add selected context to the prompt
+      let enhancedPrompt = parsed.prompt
+      let imageContent: any[] = []  // For Claude's vision API
+
+      if (selectedObjects && selectedObjects.length > 0) {
+        console.log('Including selected objects in context:', selectedObjects)
+        // Separate images from text content
+        const textContextParts: string[] = []
+        selectedObjects.forEach((obj, index) => {
+          if (obj.type === 'ai-response') {
+            textContextParts.push(`[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content}\n`)
+          } else if (obj.type === 'image') {
+            // For images, we'll handle them separately for Claude
+            imageContent.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',  // You might need to detect the actual type
+                data: obj.src.split(',')[1]  // Remove the data:image/png;base64, prefix
+              }
+            })
+          }
+        })
+        if (textContextParts.length > 0) {
+          enhancedPrompt = `Context:\n\n${textContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
+        }
       }
 
       // Create loading message
@@ -180,82 +220,123 @@ export function ChatPanel({
 
       try {
         let responseText = ''
-
-        // Use the appropriate SDK based on provider
+        console.log('About to switch on provider:', providerType)
         switch (providerType) {
           case 'anthropic': {
+            console.log('Using Anthropic SDK...')
             const anthropic = new Anthropic({
               apiKey: apiKey,
               dangerouslyAllowBrowser: true
             })
-
+            // Build message content
+            const messageContent: any[] = []
+            if (imageContent.length > 0) {
+              messageContent.push(...imageContent)
+            }
+            messageContent.push({
+              type: 'text',
+              text: enhancedPrompt
+            })
+            console.log('Sending to Claude with', imageContent.length, 'images')
             const response = await anthropic.messages.create({
               model: 'claude-3-haiku-20240307',
               max_tokens: 2000,
               messages: [{
                 role: 'user',
-                content: parsed.prompt
+                content: messageContent
               }]
             })
-
-            responseText = response.content[0].text
+            console.log('Claude response:', response)
+            // Safely access the response text
+            if (response.content && response.content[0]) {
+              if (typeof response.content[0] === 'string') {
+                responseText = response.content[0]
+              } else if (response.content[0].text) {
+                responseText = response.content[0].text
+              } else if (response.content[0].type === 'text') {
+                responseText = response.content[0].text || ''
+              }
+            } else {
+              throw new Error('Invalid response format from Claude')
+            }
             break
           }
           case 'openai': {
-            const openai = new OpenAI({
-              apiKey: apiKey,
-              dangerouslyAllowBrowser: true
-            })
-
-            const response = await openai.chat.completions.create({
-              model: 'gpt-4o-mini',
+            console.log('Using OpenAI SDK...')
+            const openai = new OpenAI({ apiKey })
+            const completion = await openai.chat.completions.create({
+              model: 'gpt-4-turbo-preview',
               messages: [{
                 role: 'user',
-                content: parsed.prompt
+                content: enhancedPrompt
               }]
             })
-
-            responseText = response.choices[0].message.content || ''
+            responseText = completion.choices[0].message.content || ''
             break
           }
           case 'google': {
-            // Gemini works with fetch - no SDK needed
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{
-                    parts: [{
-                      text: parsed.prompt
-                    }]
+            console.log('Using Google API...')
+            const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+              },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{
+                    text: enhancedPrompt
                   }]
-                })
-              }
-            )
-
-            const data = await response.json()
-            const part = data.candidates?.[0]?.content?.parts?.[0]
-            responseText = typeof part === 'object' && 'text' in part ? (part as any).text : ''
+                }]
+              })
+            })
+            const geminiData = await geminiResponse.json()
+            responseText = geminiData.candidates[0].content.parts[0].text
             break
           }
+          default:
+            throw new Error(`Unsupported provider: ${providerType}`)
         }
-
         console.log('API Response received:', responseText.substring(0, 100) + '...')
-
-        // Remove loading message
-        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
-
-        // Add response to canvas!
-        onCanvasAdd?.({
+        console.log('About to add to canvas, onCanvasAdd exists?', !!onCanvasAdd)
+        console.log('Canvas object data:', {
           type: 'ai-response',
           content: responseText,
-          prompt: parsed.prompt,
-          provider: providerType,
+          prompt: enhancedPrompt,
+          provider: parsed.provider,
           executedBy: nickname,
           position: { x: 500, y: 300 }
         })
+
+        if (!responseText) {
+          console.error('No response text to display!')
+          setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            type: 'system',
+            user: 'System',
+            content: '❌ Received empty response from AI',
+            timestamp: Date.now()
+          }])
+          return
+        }
+        console.log('About to add to canvas, responseText:', responseText.substring(0, 100))
+
+        if (onCanvasAdd) {
+          onCanvasAdd({
+            type: 'ai-response',
+            content: responseText,
+            prompt: enhancedPrompt,
+            provider: parsed.provider,
+            executedBy: nickname,
+            position: { x: 500, y: 300 }
+          })
+        } else {
+          console.error('onCanvasAdd is not defined!')
+        }
+
+        // Remove loading message
+        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
 
         // Show success in chat
         setMessages(prev => [...prev, {
@@ -282,11 +363,8 @@ export function ChatPanel({
         }])
       }
     } else {
-      console.log('Provider not available locally')
-      // Check if someone else has it
-      const remoteProvider = Array.from(providers.entries())
-        .find(([_, info]) => info.type === providerType)
-      console.log('Remote provider:', remoteProvider)
+      console.log('❌ Provider not available locally')
+      // Handle routing to other peers...
     }
   }
 
@@ -443,6 +521,23 @@ export function ChatPanel({
               {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
             </Button>
           </CardHeader>
+
+          {/* Add selection indicator */}
+          {selectedObjects && selectedObjects.length > 0 && (
+            <div className="mx-4 mb-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    {selectedObjects.length} {selectedObjects.length === 1 ? 'item' : 'items'} selected
+                  </span>
+                  <span className="text-xs text-blue-600 dark:text-blue-400">
+                    • {selectedObjects.map(obj => obj.type).join(', ')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <AnimatePresence>
             {!isMinimized && (

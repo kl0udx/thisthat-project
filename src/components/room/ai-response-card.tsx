@@ -16,8 +16,12 @@ interface AIResponseCardProps {
   provider: string
   executedBy: string
   position: { x: number; y: number }
+  size?: { width: number; height: number }
+  isSelected?: boolean
+  onSelect?: (e: React.MouseEvent) => void
   onMove: (id: string, x: number, y: number) => void
   onRemove: (id: string) => void
+  onResize?: (id: string, width: number, height: number) => void
 }
 
 export function AIResponseCard({
@@ -27,11 +31,29 @@ export function AIResponseCard({
   provider,
   executedBy,
   position,
+  size = { width: 450, height: 400 },
   onMove,
-  onRemove
+  onRemove,
+  onResize,
+  isSelected = false,
+  onSelect
 }: AIResponseCardProps) {
+  // Add validation
+  console.log('AIResponseCard props:', { id, content, prompt, provider })
+  if (!content) {
+    console.error('AIResponseCard received undefined content!')
+    return null
+  }
+
+  const validSize = {
+    width: typeof size?.width === 'number' && !isNaN(size.width) ? size.width : 450,
+    height: typeof size?.height === 'number' && !isNaN(size.height) ? size.height : 400
+  }
+  
   const [isDragging, setIsDragging] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [cardSize, setCardSize] = useState(validSize)
   const cardRef = useRef<HTMLDivElement>(null)
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -65,6 +87,40 @@ export function AIResponseCard({
     }
   }, [isDragging, dragStart, id, onMove])
 
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    setIsResizing(true)
+    
+    const startX = e.clientX
+    const startY = e.clientY
+    const startWidth = cardSize.width
+    const startHeight = cardSize.height
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX
+      const deltaY = e.clientY - startY
+      
+      // Allow more freedom in sizing
+      const newWidth = Math.max(250, startWidth + deltaX)  // Min 250px, no max
+      const newHeight = Math.max(200, startHeight + deltaY)  // Min 200px, no max
+      
+      setCardSize({ width: newWidth, height: newHeight })
+      if (onResize) {
+        onResize(id, newWidth, newHeight)
+      }
+    }
+    
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content)
     // Could add toast notification here
@@ -91,19 +147,23 @@ export function AIResponseCard({
   }
 
   const extractCode = (text: string) => {
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-    const matches = [...text.matchAll(codeBlockRegex)]
-    if (matches.length > 0) {
-      // Extract just the code blocks
-      const codeBlocks = matches.map(match => ({
-        language: match[1] || 'javascript',
-        code: match[2].trim()
-      }))
-      return {
-        hasCode: true,
-        codeBlocks,
-        fullText: text
+    try {
+      const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
+      const matches = [...text.matchAll(codeBlockRegex)]
+      if (matches && matches.length > 0 && matches[0]) {
+        // Extract just the code blocks
+        const codeBlocks = matches.map(match => ({
+          language: match[1] || 'javascript',
+          code: match[2]?.trim() || ''
+        }))
+        return {
+          hasCode: true,
+          codeBlocks,
+          fullText: text
+        }
       }
+    } catch (error) {
+      console.error('Error extracting code:', error)
     }
     return {
       hasCode: false,
@@ -121,17 +181,26 @@ export function AIResponseCard({
       style={{ 
         left: position.x, 
         top: position.y,
-        cursor: isDragging ? 'grabbing' : 'default'
+        width: cardSize.width,
+        height: cardSize.height
       }}
       onMouseDown={handleMouseDown}
+      onClick={(e) => {
+        if (!isDragging && onSelect) {
+          onSelect(e)
+        }
+      }}
     >
       <Card className={cn(
-        "w-[450px] shadow-2xl",
+        "shadow-2xl relative h-full flex flex-col",
         "bg-white dark:bg-gray-900",
         "border-2",
-        isDragging && "opacity-90"
+        isDragging && "opacity-90",
+        isResizing && "opacity-90 select-none",
+        isSelected ? "ring-4 ring-blue-500" : "ring-2 ring-transparent hover:ring-gray-300",
+        "transition-all duration-200"
       )}>
-        <CardHeader className="pb-3">
+        <CardHeader className="flex-shrink-0 pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3 flex-1 drag-handle cursor-grab">
               <div className={cn(
@@ -176,13 +245,13 @@ export function AIResponseCard({
           </div>
         </CardHeader>
         
-        <CardContent>
+        <CardContent className="flex-1 overflow-hidden flex flex-col">
           {(() => {
             const codeInfo = extractCode(content)
             if (codeInfo.hasCode) {
               return (
-                <Tabs defaultValue="code" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
+                <Tabs defaultValue="code" className="flex-1 flex flex-col">
+                  <TabsList className="flex-shrink-0 grid w-full grid-cols-2">
                     <TabsTrigger value="code">
                       <Code2 className="w-4 h-4 mr-2" />
                       Code
@@ -192,43 +261,50 @@ export function AIResponseCard({
                       Full Response
                     </TabsTrigger>
                   </TabsList>
-                  <TabsContent value="code" className="mt-4 space-y-4">
-                    {codeInfo.codeBlocks.map((block, index) => (
-                      <div key={index}>
-                        {codeInfo.codeBlocks.length > 1 && (
-                          <p className="text-xs text-muted-foreground mb-2">
-                            Code block {index + 1} ({block.language})
-                          </p>
-                        )}
-                        <div className="rounded-md bg-gray-900 p-4 overflow-auto max-h-[300px]">
+                  <TabsContent value="code" className="flex-1 overflow-hidden mt-4">
+                    <div className="h-full rounded-md bg-gray-900 p-4 overflow-auto">
+                      {codeInfo.codeBlocks.map((block, index) => (
+                        <div key={index}>
+                          {codeInfo.codeBlocks.length > 1 && (
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Code block {index + 1} ({block.language})
+                            </p>
+                          )}
                           <pre className="text-sm text-gray-100">
                             <code>{block.code}</code>
                           </pre>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </TabsContent>
-                  <TabsContent value="full" className="mt-4">
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <div className="max-h-[400px] overflow-y-auto">
-                        <p className="whitespace-pre-wrap text-sm">{content}</p>
-                      </div>
+                  <TabsContent value="full" className="flex-1 overflow-hidden mt-4">
+                    <div className="h-full overflow-y-auto prose prose-sm max-w-none dark:prose-invert">
+                      <p className="whitespace-pre-wrap">{content}</p>
                     </div>
                   </TabsContent>
                 </Tabs>
               )
-            } else {
-              // No code blocks - just show as regular text
-              return (
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                  <div className="max-h-[400px] overflow-y-auto">
-                    <p className="whitespace-pre-wrap text-sm">{content}</p>
-                  </div>
-                </div>
-              )
             }
+            return (
+              <div className="flex-1 overflow-y-auto prose prose-sm max-w-none dark:prose-invert">
+                <p className="whitespace-pre-wrap text-sm">{content}</p>
+              </div>
+            )
           })()}
         </CardContent>
+
+        <div
+          className={cn(
+            "absolute bottom-0 right-0 w-6 h-6 cursor-se-resize",
+            "hover:bg-blue-500/10 transition-colors",
+            "flex items-end justify-end p-1"
+          )}
+          onMouseDown={handleResizeMouseDown}
+        >
+          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13.586 17.414l4.414-4.414v4.414h-4.414zM13.586 12.586l6.414-6.414v6.414h-6.414z"/>
+          </svg>
+        </div>
       </Card>
     </motion.div>
   )

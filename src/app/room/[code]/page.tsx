@@ -31,6 +31,7 @@ import { useDeleteSelection } from "@/hooks/use-delete-selection"
 import { useShapeAdd } from "@/hooks/use-shape-add"
 import { useShapeDelete } from "@/hooks/use-shape-delete"
 import { AIResponseCard } from '@/components/room/ai-response-card'
+import { CanvasImage } from '@/components/room/canvas-image'
 
 export default function RoomPage({
   params,
@@ -53,6 +54,7 @@ export default function RoomPage({
   const [canvasObjects, setCanvasObjects] = useState<any[]>([])
   const [activeTool, setActiveTool] = useState('pen')
   const [hasSelection, setHasSelection] = useState(false)
+  const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set())
   const canvasRef = useRef<InfiniteCanvasRef>(null)
   
   // Always call useP2PConnection, but pass null when we shouldn't connect
@@ -111,6 +113,14 @@ export default function RoomPage({
           
         case 'canvas-object-remove':
           setCanvasObjects(prev => prev.filter(obj => obj.id !== data.objectId))
+          break
+          
+        case 'canvas-object-resize':
+          setCanvasObjects(prev => prev.map(obj => 
+            obj.id === data.objectId 
+              ? { ...obj, size: data.size } 
+              : obj
+          ))
           break
       }
     })
@@ -193,6 +203,61 @@ export default function RoomPage({
     }
   }, [])
 
+  // Add paste handler inside the component
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          
+          const blob = item.getAsFile()
+          if (!blob) continue
+          
+          // Convert to base64
+          const reader = new FileReader()
+          reader.onload = (event) => {
+            const base64 = event.target?.result as string
+            
+            // Create image object
+            const img = new Image()
+            img.onload = () => {
+              const newImage = {
+                id: crypto.randomUUID(),
+                type: 'image',
+                src: base64,
+                position: {
+                  x: window.innerWidth / 2 - 200,
+                  y: window.innerHeight / 2 - 150
+                },
+                size: {
+                  width: Math.min(400, img.width),
+                  height: Math.min(300, img.height * (400 / img.width))
+                },
+                timestamp: Date.now()
+              }
+              
+              setCanvasObjects(prev => [...prev, newImage])
+              
+              // Broadcast to others
+              broadcast({
+                type: 'canvas-object-add',
+                object: newImage
+              })
+            }
+            img.src = base64
+          }
+          reader.readAsDataURL(blob)
+        }
+      }
+    }
+    
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [broadcast])
+
   // Handler functions
   const handleSetNickname = (newNickname: string) => {
     setNickname(newNickname)
@@ -214,19 +279,24 @@ export default function RoomPage({
   }, [canvasObjects.length])
 
   const handleCanvasAdd = useCallback((data: any) => {
+    console.log('handleCanvasAdd called with:', data)
+    if (!data.content) {
+      console.error('No content in canvas object data!')
+      return
+    }
     const newObject = {
       id: crypto.randomUUID(),
       type: data.type,
-      content: data.content,
-      prompt: data.prompt,
-      provider: data.provider,
-      executedBy: data.executedBy,
+      content: data.content || '',  // Provide default
+      prompt: data.prompt || '',
+      provider: data.provider || 'unknown',
+      executedBy: data.executedBy || 'unknown',
       position: findOptimalPosition(),
+      size: { width: 450, height: 400 },
       timestamp: Date.now()
     }
-    
+    console.log('Creating canvas object:', newObject)
     setCanvasObjects(prev => [...prev, newObject])
-    
     broadcast({
       type: 'canvas-object-add',
       object: newObject
@@ -326,6 +396,49 @@ export default function RoomPage({
     toast.success('Provider removed!')
   }, [broadcast, userId])
 
+  const handleObjectResize = useCallback((id: string, width: number, height: number) => {
+    setCanvasObjects(prev => prev.map(obj => 
+      obj.id === id 
+        ? { ...obj, size: { width, height } } 
+        : obj
+    ))
+    
+    broadcast({
+      type: 'canvas-object-resize',
+      objectId: id,
+      size: { width, height }
+    })
+  }, [broadcast])
+
+  // Add selection handlers after other handlers
+  const handleObjectSelect = (id: string, multiSelect: boolean = false) => {
+    setSelectedObjects(prev => {
+      const newSelection = new Set(prev)
+      
+      if (multiSelect) {
+        // Cmd/Ctrl click toggles selection
+        if (newSelection.has(id)) {
+          newSelection.delete(id)
+        } else {
+          newSelection.add(id)
+        }
+      } else {
+        // Single click replaces selection
+        newSelection.clear()
+        newSelection.add(id)
+      }
+      
+      return newSelection
+    })
+  }
+
+  // Add handler to clear selection when clicking canvas background
+  const handleCanvasBackgroundClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setSelectedObjects(new Set())
+    }
+  }
+
   // Prepare peer data
   const allUsers = [
     { 
@@ -340,6 +453,13 @@ export default function RoomPage({
       avatarColor: getAvatarColor(peer.nickname)
     }))
   ]
+
+  // Add this helper function to get the actual selected objects
+  const getSelectedObjects = () => {
+    return Array.from(selectedObjects)
+      .map(id => canvasObjects.find(obj => obj.id === id))
+      .filter(Boolean)
+  }
 
   // Render loading state
   if (!mounted) {
@@ -418,19 +538,58 @@ export default function RoomPage({
             />
             
             {/* AI Response Cards Layer */}
-            <div className="absolute inset-0 pointer-events-none">
+            <div 
+              className="absolute inset-0 pointer-events-none"
+              onClick={handleCanvasBackgroundClick}
+            >
               <div className="relative w-full h-full">
-                {canvasObjects.map(obj => (
-                  obj.type === 'ai-response' && (
-                    <div key={obj.id} className="pointer-events-auto">
-                      <AIResponseCard
-                        {...obj}
-                        onMove={handleObjectMove}
-                        onRemove={handleObjectRemove}
-                      />
-                    </div>
-                  )
-                ))}
+                {canvasObjects.map(obj => {
+                  switch (obj.type) {
+                    case 'ai-response':
+                      return (
+                        <div key={obj.id} className="pointer-events-auto">
+                          <AIResponseCard
+                            id={obj.id}
+                            content={obj.content}
+                            prompt={obj.prompt}
+                            provider={obj.provider}
+                            executedBy={obj.executedBy}
+                            position={obj.position}
+                            size={obj.size || { width: 450, height: 400 }}
+                            isSelected={selectedObjects.has(obj.id)}
+                            onSelect={(e: React.MouseEvent) => {
+                              e.stopPropagation()
+                              handleObjectSelect(obj.id, e.metaKey || e.ctrlKey)
+                            }}
+                            onMove={handleObjectMove}
+                            onRemove={handleObjectRemove}
+                            onResize={handleObjectResize}
+                          />
+                        </div>
+                      )
+                    case 'image':
+                      return (
+                        <div key={obj.id} className="pointer-events-auto">
+                          <CanvasImage
+                            id={obj.id}
+                            src={obj.src}
+                            position={obj.position}
+                            size={obj.size}
+                            isSelected={selectedObjects.has(obj.id)}
+                            onSelect={(e: React.MouseEvent) => {
+                              e.stopPropagation()
+                              handleObjectSelect(obj.id, e.metaKey || e.ctrlKey)
+                            }}
+                            onMove={handleObjectMove}
+                            onResize={handleObjectResize}
+                            onRemove={handleObjectRemove}
+                          />
+                        </div>
+                      )
+                    default:
+                      return null
+                  }
+                })}
               </div>
             </div>
           </div>
@@ -453,6 +612,7 @@ export default function RoomPage({
             providers={providers}
             localProviders={localProviders}
             onCanvasAdd={handleCanvasAdd}
+            selectedObjects={getSelectedObjects()}
           />
 
           {/* Share Modal */}
