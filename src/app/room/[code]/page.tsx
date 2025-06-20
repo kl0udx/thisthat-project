@@ -32,6 +32,7 @@ import { useShapeAdd } from "@/hooks/use-shape-add"
 import { useShapeDelete } from "@/hooks/use-shape-delete"
 import { AIResponseCard } from '@/components/room/ai-response-card'
 import { CanvasImage } from '@/components/room/canvas-image'
+import type { ParsedCommand } from '@/lib/command-parser'
 
 export default function RoomPage({
   params,

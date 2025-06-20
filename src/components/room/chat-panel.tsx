@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { parseMessage, getAvailableCommands, type ParsedCommand } from '@/lib/command-parser'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
+import type { P2PConnection } from '@/lib/webrtc'
 
 interface Message {
   id: string
@@ -263,7 +264,10 @@ export function ChatPanel({
           }
           case 'openai': {
             console.log('Using OpenAI SDK...')
-            const openai = new OpenAI({ apiKey })
+            const openai = new OpenAI({ 
+              apiKey: apiKey,
+              dangerouslyAllowBrowser: true
+            })
             const completion = await openai.chat.completions.create({
               model: 'gpt-4-turbo-preview',
               messages: [{
@@ -483,11 +487,11 @@ export function ChatPanel({
         )}
       >
         <Card className={cn(
-          "flex flex-col bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-2xl border",
+          "flex flex-col bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-2xl border max-h-[600px] overflow-hidden",
           isMinimized ? "h-14" : "h-[600px]"
         )}>
           {/* Header */}
-          <CardHeader className="flex flex-row items-center justify-between p-3 space-y-0">
+          <CardHeader className="flex flex-row items-center justify-between p-3 space-y-0 border-b">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5" />
               <h3 className="font-semibold">Chat</h3>
@@ -522,36 +526,34 @@ export function ChatPanel({
             </Button>
           </CardHeader>
 
-          {/* Add selection indicator */}
-          {selectedObjects && selectedObjects.length > 0 && (
-            <div className="mx-4 mb-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                    {selectedObjects.length} {selectedObjects.length === 1 ? 'item' : 'items'} selected
-                  </span>
-                  <span className="text-xs text-blue-600 dark:text-blue-400">
-                    • {selectedObjects.map(obj => obj.type).join(', ')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
           <AnimatePresence>
             {!isMinimized && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-1 flex flex-col"
+                className="flex-1 flex flex-col min-h-0"
               >
-                <Separator />
-                
-                {/* Messages */}
-                <ScrollArea className="flex-1" ref={scrollRef}>
-                  <div className="p-4 space-y-4">
+                {/* Add selection indicator */}
+                {selectedObjects && selectedObjects.length > 0 && (
+                  <div className="mx-4 mt-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                          {selectedObjects.length} {selectedObjects.length === 1 ? 'item' : 'items'} selected
+                        </span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400">
+                          • {selectedObjects.map(obj => obj.type).join(', ')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Messages area - scrollable */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                  <div className="space-y-3">
                     {messages.length === 0 ? (
                       <div className="text-center text-muted-foreground text-sm py-8">
                         <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -568,30 +570,25 @@ export function ChatPanel({
                       ))
                     )}
                   </div>
-                </ScrollArea>
+                </div>
 
                 {/* Provider hints */}
                 {providers.size > 0 && (
-                  <>
-                    <Separator />
-                    <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/30">
-                      <div className="flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        <span>Try:</span>
-                      </div>
-                      <div className="mt-1 space-y-0.5">
-                        {providers.has('openai') && <div>• @ai create a react component</div>}
-                        {providers.has('perplexity') && <div>• @search latest AI news</div>}
-                        {providers.has('anthropic') && <div>• @claude explain quantum computing</div>}
-                      </div>
+                  <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/30 border-t">
+                    <div className="flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      <span>Try:</span>
                     </div>
-                  </>
+                    <div className="mt-1 space-y-0.5">
+                      {providers.has('openai') && <div>• @ai create a react component</div>}
+                      {providers.has('perplexity') && <div>• @search latest AI news</div>}
+                      {providers.has('anthropic') && <div>• @claude explain quantum computing</div>}
+                    </div>
+                  </div>
                 )}
 
-                <Separator />
-
-                {/* Input */}
-                <CardContent className="p-4">
+                {/* Input area - always at bottom */}
+                <div className="p-4 border-t">
                   <div className="relative">
                     {/* Command suggestions */}
                     {suggestions.length > 0 && (
@@ -624,7 +621,7 @@ export function ChatPanel({
                       </Button>
                     </form>
                   </div>
-                </CardContent>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

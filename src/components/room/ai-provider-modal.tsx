@@ -33,8 +33,8 @@ const PROVIDERS: Provider[] = [
     ),
     description: 'OpenAI\'s ChatGPT model for natural language processing and generation.',
     apiKeyPlaceholder: 'sk-...',
-    apiKeyPattern: '^sk-[A-Za-z0-9]{32,}$',
-    apiKeyHelp: 'Your OpenAI API key should start with "sk-" followed by 32 or more characters.',
+    apiKeyPattern: '^sk-[A-Za-z0-9-_]{20,}$',
+    apiKeyHelp: 'Your OpenAI API key should start with "sk-" followed by letters, numbers, hyphens, and underscores.',
     color: '',
     apiKeyUrl: 'https://platform.openai.com/api-keys'
   },
@@ -46,8 +46,8 @@ const PROVIDERS: Provider[] = [
     ),
     description: 'Anthropic\'s Claude model for advanced reasoning and analysis.',
     apiKeyPlaceholder: 'sk-ant-...',
-    apiKeyPattern: '^sk-ant-[A-Za-z0-9]{32,}$',
-    apiKeyHelp: 'Your Anthropic API key should start with "sk-ant-" followed by 32 or more characters.',
+    apiKeyPattern: '^sk-ant-[A-Za-z0-9-_]{40,}$',
+    apiKeyHelp: 'Your Anthropic API key should start with "sk-ant-" followed by letters, numbers, hyphens, and underscores.',
     color: '',
     apiKeyUrl: 'https://console.anthropic.com/settings/keys'
   },
@@ -59,8 +59,8 @@ const PROVIDERS: Provider[] = [
     ),
     description: 'Google\'s Gemini model for multimodal understanding and generation.',
     apiKeyPlaceholder: 'AIza...',
-    apiKeyPattern: '^AIza[A-Za-z0-9_-]{35}$',
-    apiKeyHelp: 'Your Google API key should start with "AIza" followed by 35 characters.',
+    apiKeyPattern: '^AIza[A-Za-z0-9-_]{35,}$',
+    apiKeyHelp: 'Your Google AI API key should start with "AIza" followed by letters and numbers.',
     color: '',
     apiKeyUrl: 'https://aistudio.google.com/app/apikey'
   }
@@ -138,9 +138,9 @@ export function AIProviderModal({
               className="p-6"
             >
               <DialogHeader className="mb-4">
-                <DialogTitle>Add AI Provider</DialogTitle>
+                <DialogTitle>Add or Update AI Provider</DialogTitle>
                 <DialogDescription>
-                  Choose an AI to add. Your API key stays in your browser.
+                  Choose an AI to add or update. Your API key stays in your browser.
                 </DialogDescription>
               </DialogHeader>
 
@@ -152,10 +152,10 @@ export function AIProviderModal({
                       key={provider.id}
                       className={`cursor-pointer transition-all ${
                         isActive 
-                          ? 'opacity-60 cursor-not-allowed' 
+                          ? 'ring-2 ring-green-500 bg-green-50 dark:bg-green-950/20 hover:shadow-md hover:scale-[1.02]' 
                           : 'hover:shadow-md hover:scale-[1.02]'
                       }`}
-                      onClick={() => !isActive && handleProviderSelect(provider)}
+                      onClick={() => handleProviderSelect(provider)}
                     >
                       <CardHeader className="p-4">
                         <div className="flex items-center justify-between">
@@ -282,7 +282,7 @@ export function AIProviderModal({
                   ) : (
                     <>
                       <Check className="w-4 h-4 mr-2" />
-                      Add {selectedProvider.name}
+                      {existingProviders.has(selectedProvider.id) ? 'Update' : 'Add'} {selectedProvider.name}
                     </>
                   )}
                 </Button>

@@ -9,6 +9,7 @@ import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+// Define AIResponseCardProps inline
 interface AIResponseCardProps {
   id: string
   content: string
@@ -172,6 +173,39 @@ export function AIResponseCard({
     }
   }
 
+  // Add function to detect if content contains HTML
+  const detectHTML = (code: string) => {
+    return code.includes('<html') || code.includes('<!DOCTYPE') || 
+           code.includes('<body') || code.includes('<div') ||
+           (code.includes('<') && code.includes('>'))
+  }
+
+  // Add function to create complete HTML document
+  const createHTMLDocument = (code: string) => {
+    // If it's already a complete HTML doc, return as-is
+    if (code.includes('<!DOCTYPE') || code.includes('<html')) {
+      return code
+    }
+    
+    // Otherwise wrap in basic HTML structure with Tailwind CDN
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+          body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; }
+        </style>
+      </head>
+      <body>
+        ${code}
+      </body>
+      </html>
+    `
+  }
+
   return (
     <motion.div
       ref={cardRef}
@@ -251,10 +285,14 @@ export function AIResponseCard({
             if (codeInfo.hasCode) {
               return (
                 <Tabs defaultValue="code" className="flex-1 flex flex-col">
-                  <TabsList className="flex-shrink-0 grid w-full grid-cols-2">
+                  <TabsList className="flex-shrink-0 grid w-full grid-cols-3">
                     <TabsTrigger value="code">
                       <Code2 className="w-4 h-4 mr-2" />
                       Code
+                    </TabsTrigger>
+                    <TabsTrigger value="preview">
+                      <Eye className="w-4 h-4 mr-2" />
+                      Preview
                     </TabsTrigger>
                     <TabsTrigger value="full">
                       <Eye className="w-4 h-4 mr-2" />
@@ -276,6 +314,32 @@ export function AIResponseCard({
                         </div>
                       ))}
                     </div>
+                  </TabsContent>
+                  <TabsContent value="preview" className="mt-4">
+                    {(() => {
+                      const codeToPreview = codeInfo.codeBlocks[0]?.code || content
+                      
+                      if (detectHTML(codeToPreview)) {
+                        return (
+                          <div className="border rounded-md overflow-hidden bg-white" style={{ height: size?.height ? size.height - 200 : 400 }}>
+                            <iframe
+                              srcDoc={createHTMLDocument(codeToPreview)}
+                              className="w-full h-full"
+                              sandbox="allow-scripts"
+                              title="Preview"
+                            />
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <div className="border rounded-md p-4 bg-gray-50" style={{ minHeight: 200 }}>
+                            <p className="text-sm text-muted-foreground text-center">
+                              Preview available for HTML content only
+                            </p>
+                          </div>
+                        )
+                      }
+                    })()}
                   </TabsContent>
                   <TabsContent value="full" className="flex-1 overflow-hidden mt-4">
                     <div className="h-full overflow-y-auto prose prose-sm max-w-none dark:prose-invert">
