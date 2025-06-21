@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ExternalLink, Sparkles, ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { ExternalLink, Sparkles, ArrowLeft, Check, Eye, EyeOff, Loader2, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import React from 'react'
+import { cn } from '@/lib/utils'
 
 interface Provider {
   id: string
@@ -150,17 +151,21 @@ export function AIProviderModal({
                   return (
                     <Card 
                       key={provider.id}
-                      className={`cursor-pointer transition-all ${
+                      className={cn(
+                        "cursor-pointer transition-all relative",
                         isActive 
-                          ? 'ring-2 ring-green-500 bg-green-50 dark:bg-green-950/20 hover:shadow-md hover:scale-[1.02]' 
+                          ? 'bg-green-50 dark:bg-green-900/20 border-green-500' 
                           : 'hover:shadow-md hover:scale-[1.02]'
-                      }`}
-                      onClick={() => handleProviderSelect(provider)}
+                      )}
+                      onClick={() => !isActive && handleProviderSelect(provider)}
                     >
                       <CardHeader className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`text-3xl p-2 rounded-lg bg-gradient-to-br ${provider.color} bg-opacity-10`}>
+                            <div className={cn(
+                              "p-2 rounded-lg",
+                              isActive ? 'bg-green-100 dark:bg-green-900/50' : `bg-gradient-to-br ${provider.color} bg-opacity-10`
+                            )}>
                               {provider.icon}
                             </div>
                             <div>
@@ -170,8 +175,24 @@ export function AIProviderModal({
                               </CardDescription>
                             </div>
                           </div>
+                          {/* X button for active providers */}
                           {isActive && (
-                            <Badge variant="secondary">Active</Badge>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 hover:bg-red-100 dark:hover:bg-red-900/20"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                localStorage.removeItem(`api_key_${provider.id}`)
+                                if (typeof window !== 'undefined' && window.toast) {
+                                  window.toast.success(`${provider.name} disconnected`)
+                                }
+                                // Optionally, trigger a state update or callback here
+                                window.location.reload()
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           )}
                         </div>
                       </CardHeader>

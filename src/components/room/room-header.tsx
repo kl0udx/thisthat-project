@@ -27,21 +27,26 @@ export function RoomHeader({
     <div className="h-16 border-b bg-white px-6 flex items-center justify-between">
       {/* Left side - avatars */}
       <div className="flex -space-x-2">
-        {peers.map((peer) => (
-          <Avatar key={peer.userId} className="h-8 w-8 border-2 border-white">
-            <AvatarFallback 
-              className="text-xs font-medium text-white"
-              style={{ backgroundColor: peer.avatarColor }}
-            >
-              {peer.nickname
-                .split(' ')
-                .map(word => word[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2)}
-            </AvatarFallback>
-          </Avatar>
-        ))}
+        {peers.map((peer, index) => {
+          // Add safety check for nickname and avatarColor
+          const nickname = peer.nickname || 'Anonymous User'
+          const avatarColor = peer.avatarColor || '#9CA3AF'
+          return (
+            <Avatar key={`${peer.userId}-${index}`} className="h-8 w-8 border-2 border-white">
+              <AvatarFallback 
+                className="text-xs font-medium text-white"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {nickname
+                  .split(' ')
+                  .map(word => word[0])
+                  .join('')
+                  .toUpperCase()
+                  .slice(0, 2)}
+              </AvatarFallback>
+            </Avatar>
+          )
+        })}
       </div>
       
       {/* Right side - share button */}

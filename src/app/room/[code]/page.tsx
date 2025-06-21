@@ -33,14 +33,21 @@ import { useShapeDelete } from "@/hooks/use-shape-delete"
 import { AIResponseCard } from '@/components/room/ai-response-card'
 import { CanvasImage } from '@/components/room/canvas-image'
 import type { ParsedCommand } from '@/lib/command-parser'
+import { createRoomSession, getRoomSession, startRoomTimer } from '@/lib/supabase-rooms'
 
 export default function RoomPage({
   params,
 }: {
   params: Promise<{ code: string }>
 }) {
+  console.log('🚨 ROOM PAGE LOADED 🚨')
+  
   const { code } = use(params)
   const router = useRouter()
+  
+  // Add these debug logs right after getting the params
+  console.log('🔍 Debug - code:', code)
+  console.log('🔍 Debug - params:', params)
   
   // All useState hooks at the top level
   const [mounted, setMounted] = useState(false)
@@ -58,11 +65,16 @@ export default function RoomPage({
   const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set())
   const canvasRef = useRef<InfiniteCanvasRef>(null)
   
+  // Add debug log for userId after state declaration
+  console.log('🔍 Debug - userId (initial):', userId)
+  console.log('🔍 Debug - suggestedNickname:', suggestedNickname)
+  console.log('🔍 Debug - current nickname:', nickname)
+  
   // Always call useP2PConnection, but pass null when we shouldn't connect
   const { isConnected, peers, connectionState, broadcast, sendTo, connection } = useP2PConnection(
     mounted && nickname && !showNicknameModal ? code : null,
     userId,
-    nickname
+    nickname || suggestedNickname // Use suggestedNickname as fallback
   )
 
   // First useEffect - mounting and nickname persistence
@@ -83,7 +95,46 @@ export default function RoomPage({
     if (!connection) return
 
     const unsubscribe = connection.onMessage((data: any) => {
+      console.log('🔍 Received message:', data)
+      
       switch (data.type) {
+        case 'user-joined':
+          console.log('🔍 Received user-joined from:', data.userId, data.nickname)
+          
+          // If this is someone else joining, send our info back to them
+          if (data.userId !== userId) {
+            console.log('🔍 Sending my info back to new user')
+            // Send our nickname to the specific new user
+            sendTo(data.userId, {
+              type: 'user-info',
+              userId: userId,
+              nickname: nickname || suggestedNickname,
+              avatarColor: getAvatarColor(nickname || suggestedNickname)
+            })
+          }
+          break
+          
+        case 'user-info':
+          console.log('🔍 Received user-info:', data)
+          // This will be handled by the enhanced peers in use-p2p-connection
+          break
+          
+        case 'request-info':
+          console.log('🔍 Received request-info from:', data.from)
+          // Send our info back to the requesting peer
+          sendTo(data.from, {
+            type: 'user-info',
+            userId: userId,
+            nickname: nickname || suggestedNickname,
+            avatarColor: getAvatarColor(nickname || suggestedNickname)
+          })
+          break
+          
+        case 'test-message':
+          console.log('🧪 Test message received:', data.text)
+          alert('Received: ' + data.text)
+          break
+          
         case 'canvas-add':
           console.log('Received shape from peer:', data.shape)
           break
@@ -123,11 +174,15 @@ export default function RoomPage({
               : obj
           ))
           break
+          
+        // case 'timer-started':
+        //   console.log('Timer started by another user')
+        //   break
       }
     })
 
     return unsubscribe
-  }, [connection])
+  }, [connection, userId, nickname, suggestedNickname, sendTo])
 
   // Add this effect to handle provider messages
   useEffect(() => {
@@ -174,6 +229,22 @@ export default function RoomPage({
     return unsubscribe
   }, [connection])
 
+  // Add effect to broadcast nickname when connection is established
+  useEffect(() => {
+    if (isConnected && nickname) {
+      console.log('🔍 Broadcasting my nickname to all peers:', nickname)
+      // Delay slightly to ensure connections are ready
+      setTimeout(() => {
+        broadcast({
+          type: 'user-joined',
+          userId: userId,
+          nickname: nickname,
+          avatarColor: getAvatarColor(nickname)
+        })
+      }, 500)
+    }
+  }, [isConnected, nickname, userId, broadcast])
+
   // Add this effect to load local providers on mount
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -203,6 +274,49 @@ export default function RoomPage({
       setUserId(stored)
     }
   }, [])
+
+  // Add room session creation effect
+  useEffect(() => {
+    console.log('🔍 Room Session Debug - Starting')
+    console.log('🔍 Room code:', code)
+    console.log('🔍 User ID:', userId)
+    
+    const initRoomSession = async () => {
+      console.log('🔍 initRoomSession called')
+      
+      try {
+        // Check if room session exists
+        console.log('🔍 Checking for existing room session...')
+        const { data: existingSession, error: getError } = await getRoomSession(code)
+        console.log('🔍 getRoomSession result:', { existingSession, getError })
+        
+        if (!existingSession) {
+          // Create new room session
+          console.log('🔍 No existing session, creating new one...')
+          const { data, error } = await createRoomSession(code, userId!)
+          console.log('🔍 createRoomSession result:', { data, error })
+          
+          if (error) {
+            console.error('❌ Failed to create room session:', error)
+          } else {
+            console.log('✅ Room session created successfully:', data)
+          }
+        } else {
+          console.log('✅ Room session already exists:', existingSession)
+        }
+      } catch (err) {
+        console.error('❌ Unexpected error in initRoomSession:', err)
+      }
+    }
+    
+    if (code && userId) {
+      console.log('🔍 Both code and userId exist, initializing room session')
+      initRoomSession()
+    } else {
+      console.log('🔍 Missing code or userId, skipping room session init')
+      console.log('🔍 code:', code, 'userId:', userId)
+    }
+  }, [code, userId])
 
   // Add paste handler inside the component
   useEffect(() => {
@@ -259,11 +373,35 @@ export default function RoomPage({
     return () => document.removeEventListener('paste', handlePaste)
   }, [broadcast])
 
+  // Add keyboard shortcut for deselection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedObjects(new Set())
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // Handler functions
   const handleSetNickname = (newNickname: string) => {
+    console.log('🔍 Join Room clicked')
+    console.log('🔍 Nickname:', newNickname)
+    console.log('🔍 Room code:', code)
+    console.log('🔍 Current showNicknameModal:', showNicknameModal)
+    console.log('🔍 Generated nickname for new user:', newNickname)
+    console.log('🔍 Generated avatar color:', getAvatarColor(newNickname))
+    
     setNickname(newNickname)
     localStorage.setItem('nickname', newNickname)
+    setShowNicknameModal(false)
     toast.success('Nickname set!')
+    
+    console.log('🔍 Modal should now be closed')
+    console.log('🔍 Nickname saved to localStorage:', newNickname)
+    
+    // Note: user-joined broadcast will happen automatically when connection is established
   }
 
   const handleShapeAdd = useCallback((shape: any) => {
@@ -444,14 +582,15 @@ export default function RoomPage({
   const allUsers = [
     { 
       userId, 
-      nickname: nickname || 'You', 
+      nickname: nickname || suggestedNickname || 'Anonymous User',
       isHost: true,
-      avatarColor: getAvatarColor(nickname || 'You')
+      avatarColor: getAvatarColor(nickname || suggestedNickname) || '#9CA3AF'
     },
     ...peers.map(peer => ({
       ...peer,
-      isHost: false,
-      avatarColor: getAvatarColor(peer.nickname)
+      nickname: peer.nickname || 'Anonymous User',
+      avatarColor: getAvatarColor(peer.nickname) || '#9CA3AF',
+      isHost: false
     }))
   ]
 
@@ -471,29 +610,27 @@ export default function RoomPage({
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      {/* Nickname Modal */}
+      {/* Join Room Modal */}
       <Dialog open={showNicknameModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enter Your Nickname</DialogTitle>
+            <DialogTitle>Join Room</DialogTitle>
             <DialogDescription>
-              Choose a nickname to display to other users in the room.
+              You'll join room <strong>{code}</strong> with an auto-generated nickname.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); handleSetNickname(nickname || suggestedNickname); }}>
-            <div className="space-y-4">
-              <Input
-                type="text"
-                placeholder="Enter your nickname"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                autoFocus
-              />
-              <Button type="submit" className="w-full">
-                Join Room
-              </Button>
+          <div className="space-y-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2">Your nickname:</p>
+              <p className="text-lg font-semibold text-gray-900">{suggestedNickname}</p>
             </div>
-          </form>
+            <Button 
+              onClick={() => handleSetNickname(suggestedNickname)} 
+              className="w-full"
+            >
+              Join Room
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -505,6 +642,7 @@ export default function RoomPage({
             currentUserId={userId}
             peers={allUsers}
             isHost={true}
+            onShare={() => setShowShareModal(true)}
           />
           
           {/* Canvas container - flex-1 makes it fill remaining height */}
@@ -601,6 +739,28 @@ export default function RoomPage({
               state={connectionState}
               peerCount={allUsers.length}
             />
+            
+            {/* Test WebRTC Button */}
+            <Button
+              onClick={() => {
+                console.log('🧪 Test broadcast')
+                if (broadcast) {
+                  broadcast({
+                    type: 'test-message',
+                    text: 'Hello from ' + (nickname || suggestedNickname),
+                    timestamp: Date.now()
+                  })
+                  console.log('✅ Broadcast sent')
+                } else {
+                  console.log('❌ Broadcast function not available')
+                }
+              }}
+              className="mt-2 w-full"
+              variant="outline"
+              size="sm"
+            >
+              Test WebRTC
+            </Button>
           </div>
 
           {/* Chat Panel */}

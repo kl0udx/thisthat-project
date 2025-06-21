@@ -39,7 +39,12 @@ export function generateNickname(): string {
   return `${color} ${animal}`;
 }
 
-export function generateAvatarColor(nickname: string): string {
+export function generateAvatarColor(nickname?: string): string {
+  // Handle undefined/null nickname
+  if (!nickname || typeof nickname !== 'string') {
+    return '#9CA3AF' // Default gray color
+  }
+  
   // Use the nickname to generate a consistent color for the same nickname
   const hash = nickname.split('').reduce((acc, char) => {
     return char.charCodeAt(0) + ((acc << 5) - acc);
@@ -49,7 +54,12 @@ export function generateAvatarColor(nickname: string): string {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 }
 
-export function getAvatarColor(nickname: string): string {
+export function getAvatarColor(nickname?: string): string {
+  // Handle undefined/null nickname
+  if (!nickname || typeof nickname !== 'string') {
+    return '#9CA3AF' // Default gray color
+  }
+  
   // Create a simple hash from the nickname
   const hash = nickname.split('').reduce((acc, char) => {
     return char.charCodeAt(0) + ((acc << 5) - acc)
@@ -59,7 +69,12 @@ export function getAvatarColor(nickname: string): string {
   return avatarColors[Math.abs(hash) % avatarColors.length]
 }
 
-export function getInitials(nickname: string): string {
+export function getInitials(nickname?: string): string {
+  // Handle undefined/null nickname
+  if (!nickname || typeof nickname !== 'string') {
+    return 'U' // Default initial for unknown user
+  }
+  
   return nickname
     .split(' ')
     .map(word => word[0])

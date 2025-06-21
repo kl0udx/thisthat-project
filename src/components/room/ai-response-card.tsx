@@ -56,6 +56,7 @@ export function AIResponseCard({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [cardSize, setCardSize] = useState(validSize)
   const cardRef = useRef<HTMLDivElement>(null)
+  const [showFullContext, setShowFullContext] = useState(false)
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag from the header
@@ -206,17 +207,36 @@ export function AIResponseCard({
     `
   }
 
+  // Function to extract context and response
+  const parseContent = (content: string) => {
+    const contextMatch = content.match(/Context:\n\n([\s\S]*?)\n\n---\n\nUser request:.*?\n\n---\n\n([\s\S]*)/)
+    if (contextMatch) {
+      return {
+        hasContext: true,
+        context: contextMatch[1],
+        response: contextMatch[2] || content
+      }
+    }
+    return {
+      hasContext: false,
+      context: '',
+      response: content
+    }
+  }
+
+  const { hasContext, context, response } = parseContent(content)
+
   return (
     <motion.div
       ref={cardRef}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       className="absolute"
-      style={{ 
-        left: position.x, 
+      style={{
+        left: position.x,
         top: position.y,
-        width: cardSize.width,
-        height: cardSize.height
+        width: size?.width || 400,
+        height: size?.height || 'auto'
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => {
@@ -226,7 +246,7 @@ export function AIResponseCard({
       }}
     >
       <Card className={cn(
-        "shadow-2xl relative h-full flex flex-col",
+        "shadow-2xl relative flex flex-col",
         "bg-white dark:bg-gray-900",
         "border-2",
         isDragging && "opacity-90",
@@ -279,95 +299,118 @@ export function AIResponseCard({
           </div>
         </CardHeader>
         
-        <CardContent className="flex-1 overflow-hidden flex flex-col">
-          {(() => {
-            const codeInfo = extractCode(content)
-            if (codeInfo.hasCode) {
-              return (
-                <Tabs defaultValue="code" className="flex-1 flex flex-col">
-                  <TabsList className="flex-shrink-0 grid w-full grid-cols-3">
-                    <TabsTrigger value="code">
-                      <Code2 className="w-4 h-4 mr-2" />
-                      Code
-                    </TabsTrigger>
-                    <TabsTrigger value="preview">
-                      <Eye className="w-4 h-4 mr-2" />
-                      Preview
-                    </TabsTrigger>
-                    <TabsTrigger value="full">
-                      <Eye className="w-4 h-4 mr-2" />
-                      Full Response
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="code" className="flex-1 overflow-hidden mt-4">
-                    <div className="h-full rounded-md bg-gray-900 p-4 overflow-auto">
-                      {codeInfo.codeBlocks.map((block, index) => (
-                        <div key={index}>
-                          {codeInfo.codeBlocks.length > 1 && (
-                            <p className="text-xs text-muted-foreground mb-2">
-                              Code block {index + 1} ({block.language})
-                            </p>
-                          )}
-                          <pre className="text-sm text-gray-100">
-                            <code>{block.code}</code>
-                          </pre>
-                        </div>
-                      ))}
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="preview" className="mt-4">
-                    {(() => {
-                      const codeToPreview = codeInfo.codeBlocks[0]?.code || content
-                      
-                      if (detectHTML(codeToPreview)) {
-                        return (
-                          <div className="border rounded-md overflow-hidden bg-white" style={{ height: size?.height ? size.height - 200 : 400 }}>
-                            <iframe
-                              srcDoc={createHTMLDocument(codeToPreview)}
-                              className="w-full h-full"
-                              sandbox="allow-scripts"
-                              title="Preview"
-                            />
-                          </div>
-                        )
-                      } else {
-                        return (
-                          <div className="border rounded-md p-4 bg-gray-50" style={{ minHeight: 200 }}>
-                            <p className="text-sm text-muted-foreground text-center">
-                              Preview available for HTML content only
-                            </p>
-                          </div>
-                        )
-                      }
-                    })()}
-                  </TabsContent>
-                  <TabsContent value="full" className="flex-1 overflow-hidden mt-4">
-                    <div className="h-full overflow-y-auto prose prose-sm max-w-none dark:prose-invert">
-                      <p className="whitespace-pre-wrap">{content}</p>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              )
-            }
-            return (
-              <div className="flex-1 overflow-y-auto prose prose-sm max-w-none dark:prose-invert">
-                <p className="whitespace-pre-wrap text-sm">{content}</p>
+        <CardContent className="p-4">
+          {/* Show context section if it exists */}
+          {hasContext && (
+            <div className="mb-4 p-3 bg-muted/50 rounded-md">
+              <div className="text-xs text-muted-foreground mb-1">Context from selected items:</div>
+              <div className="text-sm">
+                {showFullContext ? (
+                  <div className="whitespace-pre-wrap">{context}</div>
+                ) : (
+                  <div className="whitespace-pre-wrap">{context.substring(0, 150)}...</div>
+                )}
               </div>
-            )
-          })()}
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-xs"
+                onClick={() => setShowFullContext(!showFullContext)}
+              >
+                {showFullContext ? 'Show less' : 'Show more'}
+              </Button>
+            </div>
+          )}
+          {/* Then show the actual response */}
+          {detectCode(response) ? (
+            (() => {
+              const codeInfo = extractCode(response)
+              if (codeInfo.hasCode) {
+                return (
+                  <Tabs defaultValue="code" className="flex flex-col">
+                    <TabsList className="flex-shrink-0 grid w-full grid-cols-3">
+                      <TabsTrigger value="code">
+                        <Code2 className="w-4 h-4 mr-2" />
+                        Code
+                      </TabsTrigger>
+                      <TabsTrigger value="preview">
+                        <Eye className="w-4 h-4 mr-2" />
+                        Preview
+                      </TabsTrigger>
+                      <TabsTrigger value="full">
+                        <Eye className="w-4 h-4 mr-2" />
+                        Full Response
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="code" className="mt-4">
+                      <div className="rounded-md bg-gray-900 overflow-hidden">
+                        <div className="p-4 overflow-auto max-h-[400px]">
+                          {codeInfo.codeBlocks.map((block, index) => (
+                            <div key={index}>
+                              {codeInfo.codeBlocks.length > 1 && (
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Code block {index + 1} ({block.language})
+                                </p>
+                              )}
+                              <pre className="text-sm text-gray-100">
+                                <code>{block.code}</code>
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="preview" className="mt-4">
+                      {(() => {
+                        const codeToPreview = codeInfo.codeBlocks[0]?.code || response
+                        if (detectHTML(codeToPreview)) {
+                          return (
+                            <div className="border rounded-md overflow-hidden bg-white" style={{ height: 400 }}>
+                              <iframe
+                                srcDoc={createHTMLDocument(codeToPreview)}
+                                className="w-full h-full"
+                                sandbox="allow-scripts"
+                                title="Preview"
+                              />
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="border rounded-md p-4 bg-gray-50">
+                              <p className="text-sm text-muted-foreground text-center">
+                                Preview available for HTML content only
+                              </p>
+                            </div>
+                          )
+                        }
+                      })()}
+                    </TabsContent>
+                    <TabsContent value="full" className="mt-4">
+                      <div className="prose prose-sm max-w-none dark:prose-invert">
+                        <div className="whitespace-pre-wrap break-words text-sm">
+                          {response}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                )
+              }
+              return null
+            })()
+          ) : (
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <div className="whitespace-pre-wrap break-words text-sm">
+                {response}
+              </div>
+            </div>
+          )}
         </CardContent>
 
         <div
-          className={cn(
-            "absolute bottom-0 right-0 w-6 h-6 cursor-se-resize",
-            "hover:bg-blue-500/10 transition-colors",
-            "flex items-end justify-end p-1"
-          )}
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
           onMouseDown={handleResizeMouseDown}
         >
-          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M13.586 17.414l4.414-4.414v4.414h-4.414zM13.586 12.586l6.414-6.414v6.414h-6.414z"/>
-          </svg>
+          <div className="w-full h-full" />
         </div>
       </Card>
     </motion.div>

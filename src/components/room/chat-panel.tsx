@@ -186,11 +186,17 @@ export function ChatPanel({
 
       if (selectedObjects && selectedObjects.length > 0) {
         console.log('Including selected objects in context:', selectedObjects)
-        // Separate images from text content
-        const textContextParts: string[] = []
-        selectedObjects.forEach((obj, index) => {
+        
+        // Create truncated context for display in chat messages
+        const contextParts = selectedObjects.map((obj, index) => {
           if (obj.type === 'ai-response') {
-            textContextParts.push(`[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content}\n`)
+            // Truncate the response content for display
+            const content = obj.content || ''
+            const truncatedContent = content.length > 150 
+              ? content.substring(0, 150) + '... (truncated)'
+              : content
+            
+            return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${truncatedContent}\n`
           } else if (obj.type === 'image') {
             // For images, we'll handle them separately for Claude
             imageContent.push({
@@ -198,14 +204,39 @@ export function ChatPanel({
               source: {
                 type: 'base64',
                 media_type: 'image/png',  // You might need to detect the actual type
-                data: obj.src.split(',')[1]  // Remove the data:image/png;base64, prefix
+                data: obj.src?.split(',')[1] || ''  // Remove the data:image/png;base64, prefix
               }
             })
+            return `[Selected Image ${index + 1}]: Image selected for context\n`
           }
-        })
-        if (textContextParts.length > 0) {
-          enhancedPrompt = `Context:\n\n${textContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
-        }
+          return ''
+        }).filter(Boolean)
+
+        // For display in chat
+        const displayPrompt = contextParts.length > 0
+          ? `Context:\n\n${contextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
+          : parsed.prompt
+
+        // But for the actual AI API call, still use the full context
+        const fullContextParts = selectedObjects.map((obj, index) => {
+          if (obj.type === 'ai-response') {
+            return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
+          } else if (obj.type === 'image') {
+            return `[Selected Image ${index + 1}]: User has selected an image\n`
+          }
+          return ''
+        }).filter(Boolean)
+
+        enhancedPrompt = fullContextParts.length > 0
+          ? `Context:\n\n${fullContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
+          : parsed.prompt
+
+        // Update the user message in chat to show truncated context
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: displayPrompt }
+            : msg
+        ))
       }
 
       // Create loading message
@@ -326,12 +357,15 @@ export function ChatPanel({
         }
         console.log('About to add to canvas, responseText:', responseText.substring(0, 100))
 
+        console.log('Response from AI:', responseText)
+        console.log('Enhanced prompt was:', enhancedPrompt)
+        console.log('About to add to canvas with content:', responseText)
         if (onCanvasAdd) {
           onCanvasAdd({
             type: 'ai-response',
-            content: responseText,
-            prompt: enhancedPrompt,
-            provider: parsed.provider,
+            content: responseText,  // This MUST be the AI's response only
+            prompt: parsed.prompt,
+            provider: providerType,
             executedBy: nickname,
             position: { x: 500, y: 300 }
           })

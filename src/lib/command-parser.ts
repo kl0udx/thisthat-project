@@ -58,15 +58,24 @@ export function parseMessage(message: string): ParsedCommand {
 }
 
 export function getAvailableCommands(providers: Map<string, any>): string[] {
-  const commands = ['@help']
+  const commands = new Set(['@help'])
   
   // Add AI commands if available
-  if (providers.has('openai')) commands.push('@ai', '@chatgpt')
-  if (providers.has('anthropic')) commands.push('@ai', '@claude')
-  if (providers.has('google')) commands.push('@ai', '@gemini')
+  if (providers.has('openai')) {
+    commands.add('@ai')
+    commands.add('@chatgpt')
+  }
+  if (providers.has('anthropic')) {
+    commands.add('@ai')
+    commands.add('@claude')
+  }
+  if (providers.has('google')) {
+    commands.add('@ai')
+    commands.add('@gemini')
+  }
   
   // Add search if available
-  if (providers.has('perplexity')) commands.push('@search')
+  if (providers.has('perplexity')) commands.add('@search')
   
-  return commands
+  return Array.from(commands)
 } 

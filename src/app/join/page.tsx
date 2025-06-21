@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { generateNickname } from '@/lib/utils'
 
 export default function JoinRoom() {
   const router = useRouter()
@@ -12,13 +13,28 @@ export default function JoinRoom() {
 
   const handleJoinRoom = () => {
     if (!roomCode) return
+    
+    // Generate and store avatar name if not already set
+    if (typeof window !== 'undefined') {
+      const existingNickname = localStorage.getItem('nickname')
+      if (!existingNickname) {
+        const avatarName = generateNickname()
+        localStorage.setItem('nickname', avatarName)
+      }
+    }
+    
     router.push(`/room/${roomCode}`)
   }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
       <div className="w-full max-w-md space-y-8">
-        <h1 className="text-3xl font-bold text-center mb-8">Join a Room</h1>
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold">Join a Room</h1>
+          <p className="text-lg text-muted-foreground">
+            Enter the room code to start collaborating
+          </p>
+        </div>
         
         <div className="space-y-4">
           <div className="space-y-2">
@@ -26,20 +42,25 @@ export default function JoinRoom() {
             <Input
               id="roomCode"
               placeholder="Enter 8-character room code"
-              value={roomCode}
+              value={roomCode || ''}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               maxLength={8}
               className="text-center tracking-widest text-lg"
             />
           </div>
           <Button
-            className="w-full"
+            className="w-full h-16 text-lg"
             onClick={handleJoinRoom}
             disabled={roomCode.length !== 8}
+            size="lg"
           >
             Join Room
           </Button>
         </div>
+        
+        <p className="text-sm text-muted-foreground text-center">
+          You&apos;ll get a fun avatar name automatically!
+        </p>
       </div>
     </main>
   )

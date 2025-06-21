@@ -1,98 +1,50 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { generateRoomCode } from '@/lib/utils'
-
-const AI_PROVIDERS = [
-  {
-    type: 'openai' as const,
-    name: 'ChatGPT',
-    model: 'gpt-4-turbo-preview',
-    description: 'Powered by OpenAI\'s GPT-4'
-  },
-  {
-    type: 'anthropic' as const,
-    name: 'Claude',
-    model: 'claude-3-opus-20240229',
-    description: 'Powered by Anthropic\'s Claude'
-  },
-  {
-    type: 'google' as const,
-    name: 'Gemini',
-    model: 'gemini-pro',
-    description: 'Powered by Google\'s Gemini'
-  }
-]
+import { generateRoomCode, generateNickname } from '@/lib/utils'
 
 export default function CreateRoom() {
   const router = useRouter()
-  const [selectedProvider, setSelectedProvider] = useState<typeof AI_PROVIDERS[0] | null>(null)
-  const [apiKey, setApiKey] = useState('')
 
   const handleCreateRoom = () => {
-    if (!selectedProvider || !apiKey) return
-
+    // Generate room code
     const roomCode = generateRoomCode()
-    // TODO: Store room in Supabase
+    
+    // Generate and store avatar name if not already set
+    if (typeof window !== 'undefined') {
+      const existingNickname = localStorage.getItem('nickname')
+      if (!existingNickname) {
+        const avatarName = generateNickname()
+        localStorage.setItem('nickname', avatarName)
+      }
+    }
+    
+    // Navigate to room
     router.push(`/room/${roomCode}`)
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-24">
-      <div className="w-full max-w-4xl space-y-8">
-        <h1 className="text-3xl font-bold text-center mb-8">Create a New Room</h1>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {AI_PROVIDERS.map((provider) => (
-            <Card
-              key={provider.type}
-              className={`cursor-pointer transition-all ${
-                selectedProvider?.type === provider.type
-                  ? 'border-primary ring-2 ring-primary'
-                  : 'hover:border-primary/50'
-              }`}
-              onClick={() => setSelectedProvider(provider)}
-            >
-              <CardHeader>
-                <CardTitle>{provider.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{provider.description}</p>
-              </CardContent>
-            </Card>
-          ))}
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <div className="w-full max-w-md space-y-8 text-center">
+        <div className="space-y-4">
+          <h1 className="text-4xl font-bold">Create a Room</h1>
+          <p className="text-lg text-muted-foreground">
+            Start collaborating with AI in real-time
+          </p>
         </div>
-
-        {selectedProvider && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="apiKey">API Key</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                placeholder={`Enter your ${selectedProvider.name} API key`}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <p className="text-sm text-muted-foreground italic">
-                Your API key is stored locally in your browser and is never sent to our servers. 
-                It is only used to make direct API calls to {selectedProvider.name}.
-              </p>
-            </div>
-            <Button
-              className="w-full"
-              onClick={handleCreateRoom}
-              disabled={!apiKey}
-            >
-              Create Room
-            </Button>
-          </div>
-        )}
+        
+        <Button 
+          className="w-full h-16 text-lg" 
+          onClick={handleCreateRoom}
+          size="lg"
+        >
+          Create Room
+        </Button>
+        
+        <p className="text-sm text-muted-foreground">
+          You&apos;ll get a fun avatar name automatically!
+        </p>
       </div>
     </main>
   )
