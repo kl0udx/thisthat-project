@@ -466,15 +466,15 @@ export class P2PConnection {
 
     console.log('🔌 Created RTCPeerConnection for peer:', peerId)
 
-    // Set up connection state monitoring
-    peer.connection!.onconnectionstatechange = () => {
-      console.log('🔌 Connection state changed for peer:', peerId, 'new state:', peer.connection!.connectionState)
-      console.log('🔌 Signaling state:', peer.connection!.signalingState)
-      console.log('🔌 ICE connection state:', peer.connection!.iceConnectionState)
-    }
-
     peer.connection!.oniceconnectionstatechange = () => {
-      console.log('🧊 ICE connection state changed for peer:', peerId, 'new state:', peer.connection!.iceConnectionState)
+      const iceState = peer.connection!.iceConnectionState
+      console.log('🧊 ICE connection state changed for peer:', peerId, 'new state:', iceState)
+      
+      // Clean up failed ICE connections
+      if (iceState === 'failed' || iceState === 'closed' || iceState === 'disconnected') {
+        console.log('🧊 ICE connection failed/closed for peer:', peerId, 'cleaning up...')
+        this.disconnectPeer(peerId)
+      }
     }
 
     peer.connection!.onicegatheringstatechange = () => {
@@ -555,6 +555,35 @@ export class P2PConnection {
     this.peers.set(peerId, peer)
     this.onPeerJoined?.(peer)
     console.log('🔌 Peer added to peers map:', peerId)
+    
+    // Set up connection timeout
+    const connectionTimeout = setTimeout(() => {
+      const currentPeer = this.peers.get(peerId)
+      if (currentPeer && currentPeer.connection?.connectionState !== 'connected') {
+        console.log('⏰ Connection timeout for peer:', peerId, 'cleaning up...')
+        this.disconnectPeer(peerId)
+      }
+    }, 30000) // 30 second timeout
+    
+    // Clear timeout when connection is established
+    peer.connection!.onconnectionstatechange = () => {
+      const connectionState = peer.connection!.connectionState
+      console.log('🔌 Connection state changed for peer:', peerId, 'new state:', connectionState)
+      console.log('🔌 Signaling state:', peer.connection!.signalingState)
+      console.log('🔌 ICE connection state:', peer.connection!.iceConnectionState)
+      
+      if (connectionState === 'connected') {
+        clearTimeout(connectionTimeout)
+        console.log('✅ Connection established for peer:', peerId)
+      }
+      
+      // Clean up failed or closed connections
+      if (connectionState === 'failed' || connectionState === 'closed' || connectionState === 'disconnected') {
+        clearTimeout(connectionTimeout)
+        console.log('🔌 Connection failed/closed for peer:', peerId, 'cleaning up...')
+        this.disconnectPeer(peerId)
+      }
+    }
   }
 
   private setupDataChannel(channel: RTCDataChannel) {
@@ -587,18 +616,44 @@ export class P2PConnection {
     }
 
     channel.onerror = (error) => {
-      console.error('📡 Data channel error:', error)
-      toast.error('Connection error occurred')
+      // Improved error handling to prevent console spam
+      const errorInfo = {
+        type: error?.type || 'unknown',
+        error: error?.error || null,
+        errorDetail: error?.error?.errorDetail || 'No error detail available'
+      }
+      
+      console.warn('📡 Data channel error occurred:', errorInfo)
+      
+      // Only show toast for actual errors, not normal disconnections
+      if (errorInfo.type !== 'close') {
+        toast.error('Connection error occurred')
+      }
     }
   }
 
   private disconnectPeer(peerId: string) {
+    console.log('🔌 Disconnecting peer:', peerId)
     const peer = this.peers.get(peerId)
     if (peer) {
-      peer.dataChannel?.close()
-      peer.connection?.close()
-      this.peers.delete(peerId)
-      this.onPeerLeft?.(peerId)
+      try {
+        if (peer.dataChannel) {
+          console.log('📡 Closing data channel for peer:', peerId)
+          peer.dataChannel.close()
+        }
+        if (peer.connection) {
+          console.log('🔌 Closing RTCPeerConnection for peer:', peerId)
+          peer.connection.close()
+        }
+      } catch (error) {
+        console.warn('⚠️ Error during peer cleanup:', peerId, error)
+      } finally {
+        this.peers.delete(peerId)
+        this.onPeerLeft?.(peerId)
+        console.log('✅ Peer cleanup completed:', peerId)
+      }
+    } else {
+      console.log('⚠️ Peer not found for cleanup:', peerId)
     }
   }
 
