@@ -209,14 +209,28 @@ export function AIResponseCard({
 
   // Function to extract context and response
   const parseContent = (content: string) => {
-    const contextMatch = content.match(/Context:\n\n([\s\S]*?)\n\n---\n\nUser request:.*?\n\n---\n\n([\s\S]*)/)
-    if (contextMatch) {
+    // Try to match the context pattern with flexible whitespace
+    const contextMatch = content.match(/Context:\s*\n\n([\s\S]*?)\n\n---\s*\n\nUser request:.*?\n\n---\s*\n\n([\s\S]*)/)
+    
+    if (contextMatch && contextMatch[2]) {
       return {
         hasContext: true,
         context: contextMatch[1],
-        response: contextMatch[2] || content
+        response: contextMatch[2].trim()  // Just the AI response
       }
     }
+    
+    // Fallback: try to find just the response after the last ---
+    const fallbackMatch = content.match(/---\s*\n\n([\s\S]+)$/)
+    if (fallbackMatch) {
+      return {
+        hasContext: true,
+        context: 'Context included',
+        response: fallbackMatch[1].trim()
+      }
+    }
+    
+    // No context found, return original content
     return {
       hasContext: false,
       context: '',
@@ -224,7 +238,31 @@ export function AIResponseCard({
     }
   }
 
+  // Function to extract user question from prompt that might contain context
+  const parsePrompt = (prompt: string) => {
+    // Try to extract just the user's question from a prompt that contains context
+    const userRequestMatch = prompt.match(/User request:\s*(.+?)(?:\n\n---|$)/)
+    if (userRequestMatch) {
+      return userRequestMatch[1].trim()
+    }
+    
+    // If no context pattern found, return the original prompt
+    return prompt
+  }
+
   const { hasContext, context, response } = parseContent(content)
+  const userQuestion = parsePrompt(prompt)
+
+  // Debug logging to verify parsing
+  console.log('🔍 AIResponseCard parsing:', {
+    originalContent: content.substring(0, 100) + '...',
+    hasContext,
+    contextLength: context.length,
+    responseLength: response.length,
+    originalPrompt: prompt.substring(0, 100) + '...',
+    userQuestion,
+    promptContainsContext: prompt.includes('Context:')
+  })
 
   return (
     <motion.div
@@ -274,7 +312,7 @@ export function AIResponseCard({
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  "{prompt}"
+                  "{userQuestion}"
                 </p>
               </div>
             </div>

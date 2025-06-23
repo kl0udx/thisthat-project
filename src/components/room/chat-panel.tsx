@@ -16,6 +16,9 @@ import { parseMessage, getAvailableCommands, type ParsedCommand } from '@/lib/co
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import type { P2PConnection } from '@/lib/webrtc'
+import { sendMessage, createAIRequest, createAIResponse } from '@/lib/supabase-hybrid'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 
 interface Message {
   id: string
@@ -30,12 +33,14 @@ interface Message {
 }
 
 interface ChatPanelProps {
+  roomCode: string
   userId: string
   nickname: string
+  messages: Message[]
   connection: P2PConnection | null
   broadcast: (data: any) => void
   sendTo: (peerId: string, data: any) => void
-  providers: Map<string, Set<string>>
+  providers: Map<string, { userId: string; nickname: string; type: string }>
   localProviders: Set<string>
   onCanvasAdd?: (data: any) => void
   selectedObjects?: Array<{
@@ -48,9 +53,23 @@ interface ChatPanelProps {
   }>
 }
 
+function detectProvider(input: string): string | undefined {
+  if (input.startsWith('@claude')) return 'anthropic';
+  if (input.startsWith('@ai') || input.startsWith('@chatgpt')) return 'openai';
+  if (input.startsWith('@gemini')) return 'google';
+  return undefined;
+}
+
+// Utility to get API key for a provider
+function getApiKey(provider: string): string | null {
+  return localStorage.getItem(`api_key_${provider}`)
+}
+
 export function ChatPanel({
+  roomCode,
   userId,
   nickname,
+  messages,
   connection,
   broadcast,
   sendTo,
@@ -59,53 +78,16 @@ export function ChatPanel({
   onCanvasAdd,
   selectedObjects
 }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isMinimized, setIsMinimized] = useState(false)
   const [pendingRequests, setPendingRequests] = useState<Map<string, any>>(new Map())
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   // Debug logs
   console.log('ChatPanel rendering, localProviders:', localProviders)
   console.log('Input:', input)
   console.log('Providers available:', providers)
-
-  // Listen for P2P messages
-  useEffect(() => {
-    if (!connection) return
-
-    const unsubscribe = connection.onMessage((data: any) => {
-      switch (data.type) {
-        case 'chat-message':
-          setMessages(prev => [...prev, data.message])
-          break
-
-        case 'ai-request':
-          // Someone is requesting AI from us
-          if (providers.has(data.provider) && providers.get(data.provider)?.userId === userId) {
-            handleAIRequest(data)
-          }
-          break
-
-        case 'ai-response':
-          // We got a response to our request
-          handleAIResponse(data)
-          break
-
-        case 'provider-added':
-          setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            type: 'system',
-            user: 'System',
-            content: `✨ ${data.nickname} added ${data.provider}! Use @${data.provider === 'openai' ? 'ai' : data.provider} to access.`,
-            timestamp: Date.now()
-          }])
-          break
-      }
-    })
-
-    return unsubscribe
-  }, [connection, providers, userId])
 
   // Auto-scroll
   useEffect(() => {
@@ -114,43 +96,45 @@ export function ChatPanel({
     }
   }, [messages])
 
-  const handleSend = async () => {
-    console.log('handleSend called! Input:', input)
-    if (!input.trim()) {
-      console.log('Input is empty, returning')
-      return
+  useEffect(() => {
+    // Scroll to bottom when new messages arrive
+    const messagesContainer = document.querySelector('.messages-container')
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight
     }
+  }, [messages])
 
-    console.log('=== SENDING MESSAGE ===')
-    console.log('Input:', input)
-    console.log('Starts with @?', input.startsWith('@'))
-
-    // Parse the message
-    const parsed = parseMessage(input)
-    console.log('Parsed message:', parsed)
-
-    // Add user message to chat
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      type: 'user',
-      user: nickname,
-      content: input,
-      timestamp: Date.now()
+  const handleSendMessage = async () => {
+    if (!input.trim()) return
+    
+    const messageContent = input.trim()
+    
+    try {
+      // Send message to Supabase
+      const sentMessage = await sendMessage({
+        room_code: roomCode,
+        user_id: userId,
+        nickname,
+        content: messageContent,
+        is_ai_request: messageContent.startsWith('@'),
+        ai_provider: messageContent.startsWith('@') ? detectProvider(messageContent) : undefined
+      })
+      
+      // Clear input immediately
+      setInput('')
+      
+      // Handle AI commands AFTER message is sent
+      if (messageContent.startsWith('@')) {
+        const parsed = parseMessage(messageContent)
+        if (parsed.type === 'ai') {
+          // Call handleAICommand with the parsed message
+          await handleAICommand(parsed, sentMessage.id)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      toast.error('Failed to send message')
     }
-
-    setMessages(prev => [...prev, userMessage])
-
-    // Handle commands
-    if (parsed.type === 'ai') {
-      console.log('Detected AI command!')
-      console.log('Command:', parsed.command)
-      console.log('Prompt:', parsed.prompt)
-      console.log('About to call handleAICommand...')
-      handleAICommand(parsed, userMessage.id)
-      return // Important: return to prevent normal message handling
-    }
-
-    setInput('')
   }
 
   const handleAICommand = async (parsed: any, messageId: string) => {
@@ -172,83 +156,67 @@ export function ChatPanel({
     console.log('Mapped provider type:', providerType)
     console.log('Do we have this provider locally?', localProviders.has(providerType))
 
+    let enhancedPrompt = parsed.prompt
+    let imageContent: any[] = []  // For Claude's vision API
+
+    if (selectedObjects && selectedObjects.length > 0) {
+      console.log('Including selected objects in context:', selectedObjects)
+      
+      // Create truncated context for display in chat messages
+      const contextParts = selectedObjects.map((obj, index) => {
+        if (obj.type === 'ai-response') {
+          // Truncate the response content for display
+          const content = obj.content || ''
+          const truncatedContent = content.length > 150 
+            ? content.substring(0, 150) + '... (truncated)'
+            : content
+          
+          return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${truncatedContent}\n`
+        } else if (obj.type === 'image') {
+          // For images, we'll handle them separately for Claude
+          imageContent.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',  // You might need to detect the actual type
+              data: obj.src?.split(',')[1] || ''  // Remove the data:image/png;base64, prefix
+            }
+          })
+          return `[Selected Image ${index + 1}]: Image selected for context\n`
+        }
+        return ''
+      }).filter(Boolean)
+
+      // For display in chat
+      const displayPrompt = contextParts.length > 0
+        ? `Context:\n\n${contextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
+        : parsed.prompt
+
+      // But for the actual AI API call, still use the full context
+      const fullContextParts = selectedObjects.map((obj, index) => {
+        if (obj.type === 'ai-response') {
+          return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
+        } else if (obj.type === 'image') {
+          return `[Selected Image ${index + 1}]: User has selected an image\n`
+        }
+        return ''
+      }).filter(Boolean)
+
+      enhancedPrompt = fullContextParts.length > 0
+        ? `Context:\n\n${fullContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
+        : parsed.prompt
+    }
+
     if (localProviders.has(providerType)) {
       console.log('✅ We have this provider locally! Provider type:', providerType)
-      const apiKey = localStorage.getItem(`api_key_${providerType}`)
+      const apiKey = getApiKey(providerType)
       if (!apiKey) {
         console.error('No API key found!')
         return
       }
 
-      // Add selected context to the prompt
-      let enhancedPrompt = parsed.prompt
-      let imageContent: any[] = []  // For Claude's vision API
-
-      if (selectedObjects && selectedObjects.length > 0) {
-        console.log('Including selected objects in context:', selectedObjects)
-        
-        // Create truncated context for display in chat messages
-        const contextParts = selectedObjects.map((obj, index) => {
-          if (obj.type === 'ai-response') {
-            // Truncate the response content for display
-            const content = obj.content || ''
-            const truncatedContent = content.length > 150 
-              ? content.substring(0, 150) + '... (truncated)'
-              : content
-            
-            return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${truncatedContent}\n`
-          } else if (obj.type === 'image') {
-            // For images, we'll handle them separately for Claude
-            imageContent.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/png',  // You might need to detect the actual type
-                data: obj.src?.split(',')[1] || ''  // Remove the data:image/png;base64, prefix
-              }
-            })
-            return `[Selected Image ${index + 1}]: Image selected for context\n`
-          }
-          return ''
-        }).filter(Boolean)
-
-        // For display in chat
-        const displayPrompt = contextParts.length > 0
-          ? `Context:\n\n${contextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
-          : parsed.prompt
-
-        // But for the actual AI API call, still use the full context
-        const fullContextParts = selectedObjects.map((obj, index) => {
-          if (obj.type === 'ai-response') {
-            return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
-          } else if (obj.type === 'image') {
-            return `[Selected Image ${index + 1}]: User has selected an image\n`
-          }
-          return ''
-        }).filter(Boolean)
-
-        enhancedPrompt = fullContextParts.length > 0
-          ? `Context:\n\n${fullContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
-          : parsed.prompt
-
-        // Update the user message in chat to show truncated context
-        setMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { ...msg, content: displayPrompt }
-            : msg
-        ))
-      }
-
       // Create loading message
       const loadingMessageId = crypto.randomUUID()
-      setMessages(prev => [...prev, {
-        id: loadingMessageId,
-        type: 'ai',
-        user: providerType,
-        content: 'Thinking...',
-        timestamp: Date.now(),
-        isLoading: true
-      }])
 
       try {
         let responseText = ''
@@ -281,12 +249,13 @@ export function ChatPanel({
             console.log('Claude response:', response)
             // Safely access the response text
             if (response.content && response.content[0]) {
-              if (typeof response.content[0] === 'string') {
-                responseText = response.content[0]
-              } else if (response.content[0].text) {
-                responseText = response.content[0].text
-              } else if (response.content[0].type === 'text') {
-                responseText = response.content[0].text || ''
+              const block = response.content[0];
+              if (typeof block === 'string') {
+                responseText = block;
+              } else if (typeof block === 'object' && 'text' in block && typeof block.text === 'string') {
+                responseText = block.text;
+              } else {
+                responseText = String(block);
               }
             } else {
               throw new Error('Invalid response format from Claude')
@@ -345,14 +314,6 @@ export function ChatPanel({
 
         if (!responseText) {
           console.error('No response text to display!')
-          setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
-          setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            type: 'system',
-            user: 'System',
-            content: '❌ Received empty response from AI',
-            timestamp: Date.now()
-          }])
           return
         }
         console.log('About to add to canvas, responseText:', responseText.substring(0, 100))
@@ -361,48 +322,48 @@ export function ChatPanel({
         console.log('Enhanced prompt was:', enhancedPrompt)
         console.log('About to add to canvas with content:', responseText)
         if (onCanvasAdd) {
+          const localResponseId = crypto.randomUUID()
+          console.log('✅ Local AI processing - adding card with responseId:', localResponseId)
           onCanvasAdd({
             type: 'ai-response',
             content: responseText,  // This MUST be the AI's response only
             prompt: parsed.prompt,
             provider: providerType,
             executedBy: nickname,
-            position: { x: 500, y: 300 }
+            position: { x: 500, y: 300 },
+            responseId: localResponseId // Generate local responseId for deduplication
           })
+          
+          // Don't broadcast - let Supabase handle distribution
+          console.log('✅ AI response added locally, no broadcast needed')
         } else {
-          console.error('onCanvasAdd is not defined!')
+          console.error('❌ onCanvasAdd is not defined!')
         }
-
-        // Remove loading message
-        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
-
-        // Show success in chat
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          type: 'system',
-          user: 'System',
-          content: `✅ Response added to canvas`,
-          timestamp: Date.now()
-        }])
 
       } catch (error: any) {
         console.error('API Error:', error)
-
-        // Remove loading message
-        setMessages(prev => prev.filter(m => m.id !== loadingMessageId))
-
-        // Show error
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          type: 'system',
-          user: 'System',
-          content: `❌ Error: ${error.message}`,
-          timestamp: Date.now()
-        }])
       }
     } else {
       console.log('❌ Provider not available locally')
-      // Handle routing to other peers...
+      // NEW: Route through Supabase when we don't have the provider
+      console.log(`Provider ${providerType} not available locally, routing request...`)
+      setIsProcessing(true)
+      try {
+        await createAIRequest({
+          room_code: roomCode,
+          provider: providerType,
+          prompt: enhancedPrompt,
+          context: {},
+          requested_by_user_id: userId,
+          requested_by_nickname: nickname,
+          status: 'pending'
+        })
+        toast(`Request sent! Waiting for someone with ${parsed.command}...`)
+      } catch (error) {
+        console.error('Failed to create AI request:', error)
+        toast.error('Failed to send AI request')
+        setIsProcessing(false)
+      }
     }
   }
 
@@ -411,13 +372,6 @@ export function ChatPanel({
       .find(([_, info]) => info.type === 'perplexity')
     
     if (!searchProvider) {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        type: 'system',
-        user: 'System',
-        content: '❌ No search provider available. Someone needs to add Perplexity!',
-        timestamp: Date.now()
-      }])
       return
     }
     
@@ -431,13 +385,7 @@ export function ChatPanel({
       .filter(p => ['openai', 'anthropic', 'google'].includes(p.type))
       .map(p => `${p.type} (${p.nickname})`)
     
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      type: 'system',
-      user: 'System',
-      content: `📖 Available Commands:\n${available.join('\n')}\n\nActive AI Providers:\n${aiProviders.join('\n') || 'None - add one with the robot button!'}`,
-      timestamp: Date.now()
-    }])
+    return
   }
 
   const handleAIRequest = async (data: any) => {
@@ -464,9 +412,6 @@ export function ChatPanel({
   }
 
   const handleAIResponse = (data: any) => {
-    // Remove loading message and add response
-    setMessages(prev => prev.filter(m => m.id !== data.requestId))
-    
     const pending = pendingRequests.get(data.requestId)
     if (pending) {
       // Add response to canvas
@@ -477,21 +422,6 @@ export function ChatPanel({
         executedBy: data.executedBy,
         prompt: pending.prompt,
         position: 'auto' // Canvas will figure out position
-      })
-      
-      // Show success message in chat
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        type: 'system',
-        user: 'System',
-        content: `✅ Response added to canvas (via ${data.executedBy}'s ${data.provider})`,
-        timestamp: Date.now()
-      }])
-      
-      setPendingRequests(prev => {
-        const next = new Map(prev)
-        next.delete(data.requestId)
-        return next
       })
     }
   }
@@ -509,6 +439,112 @@ export function ChatPanel({
   }
 
   const suggestions = getSuggestions()
+
+  // Real-time subscription for users WITH providers to process requests
+  useEffect(() => {
+    if (localProviders.size === 0) return
+    const channel = supabase
+      .channel(`ai-requests-handler-${roomCode}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ai_requests',
+          filter: `room_code=eq.${roomCode}`
+        },
+        async (payload) => {
+          const request = payload.new
+          if (
+            localProviders.has(request.provider) &&
+            request.status === 'pending' &&
+            request.requested_by_user_id !== userId
+          ) {
+            console.log(`Processing ${request.provider} request from ${request.requested_by_nickname}`)
+            await supabase
+              .from('ai_requests')
+              .update({ status: 'processing' })
+              .eq('id', request.id)
+            const apiKey = getApiKey(request.provider)
+            if (!apiKey) return
+            try {
+              let responseText = ''
+              if (request.provider === 'anthropic') {
+                const anthropic = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+                const response = await anthropic.messages.create({
+                  model: 'claude-3-haiku-20240307',
+                  max_tokens: 1024,
+                  messages: [{ role: 'user', content: request.prompt }]
+                })
+                responseText = response.content[0].type === 'text' ? response.content[0].text : ''
+              } else if (request.provider === 'openai') {
+                const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+                const completion = await openai.chat.completions.create({
+                  model: 'gpt-4-turbo-preview',
+                  messages: [{ role: 'user', content: request.prompt }]
+                })
+                responseText = completion.choices[0].message.content || ''
+              } else if (request.provider === 'google') {
+                const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                  },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: request.prompt }] }]
+                  })
+                })
+                const geminiData = await geminiResponse.json()
+                responseText = geminiData.candidates[0].content.parts[0].text
+              }
+              const aiResponse = await createAIResponse({
+                room_code: roomCode,
+                request_id: request.id,
+                provider: request.provider,
+                content: responseText,
+                executed_by_user_id: userId,
+                executed_by_nickname: nickname
+              })
+              
+              console.log('✅ AI Response created in Supabase:', aiResponse.id)
+              console.log('✅ Processor user ID:', userId)
+              
+              // Add to canvas ONLY for the processor
+              if (onCanvasAdd && responseText) {
+                console.log('✅ Processor adding AI response to canvas')
+                console.log('✅ Response ID for deduplication:', aiResponse.id)
+                onCanvasAdd({
+                  type: 'ai-response',
+                  content: responseText,
+                  prompt: request.prompt,
+                  provider: request.provider,
+                  executedBy: nickname,
+                  position: { x: 500, y: 300 },
+                  responseId: aiResponse.id // Track response ID for deduplication
+                })
+                console.log('✅ Processor card added to canvas')
+              } else {
+                console.log('❌ Skipping processor card - onCanvasAdd:', !!onCanvasAdd, 'responseText:', !!responseText)
+              }
+              
+              await supabase
+                .from('ai_requests')
+                .update({ status: 'completed' })
+                .eq('id', request.id)
+            } catch (error) {
+              console.error('Failed to process AI request:', error)
+              await supabase
+                .from('ai_requests')
+                .update({ status: 'failed' })
+                .eq('id', request.id)
+            }
+          }
+        }
+      )
+      .subscribe()
+    return () => { channel.unsubscribe() }
+  }, [localProviders, roomCode, userId, nickname])
 
   return (
     <TooltipProvider>
@@ -586,7 +622,7 @@ export function ChatPanel({
                 )}
 
                 {/* Messages area - scrollable */}
-                <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <div className="messages-container flex-1 min-h-0 overflow-y-auto p-4">
                   <div className="space-y-3">
                     {messages.length === 0 ? (
                       <div className="text-center text-muted-foreground text-sm py-8">
@@ -597,7 +633,7 @@ export function ChatPanel({
                     ) : (
                       messages.map(message => (
                         <MessageBubble 
-                          key={message.id} 
+                          key={message.id || Math.random().toString()} 
                           message={message} 
                           isOwn={message.user === nickname} 
                         />
@@ -642,7 +678,7 @@ export function ChatPanel({
                     <form onSubmit={(e) => { 
                       e.preventDefault()
                       console.log('Form submitted!')
-                      handleSend()
+                      handleSendMessage()
                     }} className="flex gap-2">
                       <Input
                         value={input}
@@ -666,6 +702,10 @@ export function ChatPanel({
 }
 
 function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean }) {
+  // Debug logging
+  console.log('Rendering MessageBubble:', message)
+  if (!message || !message.content) return null
+
   const getIcon = () => {
     switch (message.type) {
       case 'ai': return '🤖'
@@ -690,7 +730,7 @@ function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean })
       {!isOwn && (
         <Avatar className="w-8 h-8">
           <AvatarFallback className="text-xs">
-            {getIcon() || message.user.slice(0, 2).toUpperCase()}
+            {getIcon() || (typeof message.user === 'string' ? message.user.slice(0, 2).toUpperCase() : 'UN')}
           </AvatarFallback>
         </Avatar>
       )}

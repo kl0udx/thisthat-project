@@ -37,15 +37,33 @@ export function CanvasImage({
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button') || isResizing) return
     
-    setIsDragging(true)
     const startX = e.clientX - position.x
     const startY = e.clientY - position.y
+    const clickX = e.clientX
+    const clickY = e.clientY
+    let moved = false
     
     const handleMouseMove = (e: MouseEvent) => {
-      onMove(id, e.clientX - startX, e.clientY - startY)
+      // Check if mouse moved more than 5 pixels
+      const distance = Math.sqrt(
+        Math.pow(e.clientX - clickX, 2) + 
+        Math.pow(e.clientY - clickY, 2)
+      )
+      
+      if (distance > 5) {
+        moved = true
+        if (!isDragging) {
+          setIsDragging(true)
+        }
+        onMove(id, e.clientX - startX, e.clientY - startY)
+      }
     }
     
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!moved && onSelect) {
+        // It was a click, not a drag
+        onSelect(e as any)
+      }
       setIsDragging(false)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
@@ -107,11 +125,6 @@ export function CanvasImage({
         height: size.height
       }}
       onMouseDown={handleMouseDown}
-      onClick={(e) => {
-        if (!isDragging && onSelect) {
-          onSelect(e)
-        }
-      }}
     >
       <div className={cn(
         "relative w-full h-full rounded-lg overflow-hidden shadow-xl",

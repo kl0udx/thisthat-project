@@ -34,9 +34,9 @@ export function generateRoomCode(): string {
 }
 
 export function generateNickname(): string {
-  const color = colors[Math.floor(Math.random() * colors.length)];
-  const animal = animals[Math.floor(Math.random() * animals.length)];
-  return `${color} ${animal}`;
+  const adjectives = ['Red', 'Blue', 'Green', 'Purple', 'Orange', 'Yellow', 'Pink', 'Cyan']
+  const nouns = ['Wolf', 'Eagle', 'Lion', 'Tiger', 'Bear', 'Fox', 'Hawk', 'Owl']
+  return `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`
 }
 
 export function generateAvatarColor(nickname?: string): string {
@@ -81,4 +81,19 @@ export function getInitials(nickname?: string): string {
     .join('')
     .toUpperCase()
     .slice(0, 2)
+}
+
+// Generate random avatar color (independent of nickname)
+export function generateRandomAvatarColor(): string {
+  const colors = [
+    '#EF4444', // red
+    '#F59E0B', // amber
+    '#10B981', // emerald
+    '#3B82F6', // blue
+    '#8B5CF6', // violet
+    '#EC4899', // pink
+    '#14B8A6', // teal
+    '#F97316', // orange
+  ]
+  return colors[Math.floor(Math.random() * colors.length)]
 }

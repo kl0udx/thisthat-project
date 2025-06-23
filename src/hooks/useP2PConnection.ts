@@ -13,6 +13,9 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
   // Add a local state to track peer info including nicknames
   const [peerInfo, setPeerInfo] = useState<Map<string, { nickname: string, avatarColor: string }>>(new Map())
 
+  // Add a ref for peerInfo to allow mutation in effects
+  const peerInfoRef = useRef<Map<string, { nickname: string, avatarColor: string }>>(new Map())
+
   useEffect(() => {
     // Skip if no required params
     if (!roomCode || !userId || !nickname) {
@@ -38,6 +41,8 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
     const connection = new P2PConnection(
       roomCode,
       userId,
+      nickname,
+      getAvatarColor(nickname),
       (data) => {
         console.log('🔍 P2P Message received:', data)
         
@@ -174,20 +179,85 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
     }
   }, [isConnected, nickname, userId])
 
+  // Add message handler effect with detailed logging
+  useEffect(() => {
+    if (!connectionRef.current) return
+    // Simulate subscription pattern if onMessage is not a real event emitter
+    const handler = (data: any) => {
+      console.log('🎯 Hook received message:', data.type, data)
+      switch (data.type) {
+        case 'user-joined':
+          console.log('👤 Processing user-joined:', {
+            fromUser: data.userId,
+            nickname: data.nickname,
+            avatarColor: data.avatarColor,
+            currentPeerInfo: Array.from(peerInfoRef.current.entries())
+          })
+          peerInfoRef.current.set(data.userId, {
+            nickname: data.nickname,
+            avatarColor: data.avatarColor
+          })
+          console.log('👤 Updated peerInfo:', Array.from(peerInfoRef.current.entries()))
+          break
+        case 'user-info':
+          console.log('📋 Processing user-info:', {
+            fromUser: data.userId,
+            nickname: data.nickname,
+            avatarColor: data.avatarColor
+          })
+          peerInfoRef.current.set(data.userId, {
+            nickname: data.nickname,
+            avatarColor: data.avatarColor
+          })
+          console.log('📋 Updated peerInfo after user-info:', Array.from(peerInfoRef.current.entries()))
+          break
+      }
+    }
+    // If connectionRef.current.onMessage is a public event, subscribe
+    if (typeof connectionRef.current.onMessage === 'function') {
+      // If onMessage is an event emitter, use .on/.off
+      // Otherwise, just call handler directly for demo
+      connectionRef.current.onMessage(handler)
+      return () => {
+        // Unsubscribe logic if available
+      }
+    }
+  }, [connectionRef.current])
+
   const broadcast = useCallback((data: any) => {
+    console.log('🔗 Broadcast function called:', {
+      type: data.type,
+      connectionExists: !!connectionRef.current,
+      totalPeers: connectionRef.current?.getPeers().length || 0,
+      timestamp: new Date().toISOString()
+    })
     connectionRef.current?.broadcast(data)
   }, [])
 
   const sendTo = useCallback((peerId: string, data: any) => {
+    console.log('🔗 SendTo function called:', {
+      peerId,
+      type: data.type,
+      connectionExists: !!connectionRef.current,
+      timestamp: new Date().toISOString()
+    })
     connectionRef.current?.sendTo(peerId, data)
   }, [])
 
   // Enhance peers with nickname info before returning
-  const enhancedPeers = peers.map(peer => ({
-    ...peer,
-    nickname: peerInfo.get(peer.userId)?.nickname || 'Anonymous User',
-    avatarColor: peerInfo.get(peer.userId)?.avatarColor || '#9CA3AF'
-  }))
+  const enhancedPeers = peers.map(peer => {
+    const info = peerInfoRef.current.get(peer.userId)
+    console.log('🔄 Enhancing peer:', {
+      userId: peer.userId,
+      hasInfo: !!info,
+      nickname: info?.nickname || 'Anonymous User'
+    })
+    return {
+      ...peer,
+      nickname: info?.nickname || 'Anonymous User',
+      avatarColor: info?.avatarColor || getAvatarColor('Anonymous User')
+    }
+  })
 
   return {
     isConnected,

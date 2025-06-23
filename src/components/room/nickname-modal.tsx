@@ -6,16 +6,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 interface NicknameModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (nickname: string) => void
   suggestedNickname: string
+  avatarColor?: string
 }
 
 export function NicknameModal({
@@ -23,6 +24,7 @@ export function NicknameModal({
   onClose,
   onSubmit,
   suggestedNickname,
+  avatarColor = '#9CA3AF'
 }: NicknameModalProps) {
   const [nickname, setNickname] = useState('')
 
@@ -36,27 +38,39 @@ export function NicknameModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Join Room</DialogTitle>
+          <DialogTitle>Choose your display name</DialogTitle>
+          <DialogDescription>
+            Enter any name you'd like to use in this room
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="nickname">Choose a Nickname</Label>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {(nickname || suggestedNickname || 'A').charAt(0).toUpperCase()}
+            </div>
             <Input
-              id="nickname"
               placeholder={suggestedNickname}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && nickname.trim()) {
+                if (e.key === 'Enter' && nickname) {
                   handleSubmit()
                 }
               }}
+              autoFocus
+              className="flex-1"
             />
           </div>
+          <p className="text-sm text-muted-foreground">
+            You can use any name - your real name, username, or something fun!
+          </p>
           <Button
+            onClick={() => handleSubmit()}
+            disabled={!nickname && !suggestedNickname}
             className="w-full"
-            onClick={handleSubmit}
-            disabled={!nickname.trim()}
           >
             Join Room
           </Button>
