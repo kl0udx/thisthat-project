@@ -9,7 +9,14 @@ import { ShareModal } from '@/components/room/share-modal'
 import { ChatPanel } from '@/components/room/chat-panel'
 import { AIProviderModal } from '@/components/room/ai-provider-modal'
 import { NicknameModal } from '@/components/room/nickname-modal'
+import { RecordingIndicator } from '@/components/room/recording-indicator'
+import { RecordingPreviewModal } from '@/components/room/recording-preview-modal'
+import { GalleryUploadModal } from '@/components/room/gallery-upload-modal'
+import { RoomTimer } from '@/components/room/room-timer'
+import { TimerModal } from '@/components/room/timer-modal'
+import { BoltBadge } from '@/components/ui/bolt-badge'
 import { useP2PConnection } from '@/hooks/useP2PConnection'
+import { useScreenRecording } from '@/hooks/use-screen-recording'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -24,11 +31,17 @@ import { ArtifactCard } from '@/components/room/artifact-card'
 import { ImageArtifactCard } from '@/components/room/image-artifact-card'
 import { RemoteCursor } from '@/components/room/remote-cursor'
 import type { ParsedCommand } from '@/lib/command-parser'
-import { createRoomSession, getRoomSession, startRoomTimer } from '@/lib/supabase-rooms'
+import { createRoomSession, getRoomSession, startRoomTimer, subscribeToRoomSession, updateRoomTimer, type RoomSession } from '@/lib/supabase-rooms'
 import { artifactStore, type Artifact } from '@/lib/artifact-store'
 import { Loader2 } from 'lucide-react'
 import { getMessages, Message, createCanvasObject, updateCanvasObject, deleteCanvasObject, getCanvasObjects, createPresenceChannel, getOnlineUsers, type RoomPresence } from '@/lib/supabase-hybrid'
 import { supabase } from '@/lib/supabase'
+import { 
+  checkRoomSharedToGallery, 
+  uploadRecordingToStorage, 
+  createGalleryEntry,
+  addBonusTimeToRoom 
+} from '@/lib/supabase-hybrid'
 
 // Add this type above the component
 interface ChatMessage {
@@ -90,6 +103,21 @@ export default function RoomPage({
   // Add state for the input field
   const [nicknameInput, setNicknameInput] = useState('')
   
+  // Recording state
+  const [showPreview, setShowPreview] = useState(false)
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [showGalleryUpload, setShowGalleryUpload] = useState(false)
+  
+  // Timer state
+  const [showTimerModal, setShowTimerModal] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState(0)
+  const [isTimerStarted, setIsTimerStarted] = useState(false)
+  
+  // Room session state
+  const [roomSession, setRoomSession] = useState<RoomSession | null>(null)
+  
   // Add debug log for userId after state declaration
   console.log('🔍 Debug - userId (initial):', userId)
   console.log('🔍 Debug - suggestedNickname:', suggestedNickname)
@@ -101,6 +129,79 @@ export default function RoomPage({
     userId,
     nickname || suggestedNickname || '' // Use suggestedNickname as fallback
   )
+
+  // Handle recording complete
+  const handleRecordingComplete = useCallback((blob: Blob, url: string) => {
+    setRecordingBlob(blob)
+    setRecordingUrl(url)
+    setShowPreview(true)
+  }, [])
+
+  // Initialize recording hook
+  const { isRecording, recordingTime, startRecording, stopRecording } = useScreenRecording({
+    maxDuration: 120,
+    onRecordingComplete: handleRecordingComplete
+  })
+
+  // Handle upload to gallery
+  const handleUploadToGallery = async (title: string, description: string) => {
+    if (!recordingBlob || !recordingUrl) return
+    
+    setIsUploading(true)
+    try {
+      // Check if room already shared
+      const alreadyShared = await checkRoomSharedToGallery(code)
+      if (alreadyShared) {
+        toast.error('This room has already shared a recording to the gallery')
+        return
+      }
+      
+      // Upload video to storage
+      toast.info('Uploading recording...')
+      const videoUrl = await uploadRecordingToStorage(
+        code,
+        recordingBlob,
+        userId || ''
+      )
+      
+      // Calculate duration
+      const duration = recordingTime || 120 // Use actual recording time
+      
+      // Create gallery entry
+      await createGalleryEntry({
+        room_code: code,
+        title: title,
+        description: description,
+        video_url: videoUrl,
+        duration_seconds: duration,
+        created_by_user_id: userId || '',
+        created_by_nickname: nickname || ''
+      })
+      
+      // Add bonus time
+      await addBonusTimeToRoom(code, 10)
+      
+      toast.success('Recording shared to gallery! +10 minutes added to room timer!')
+      setShowGalleryUpload(false)
+      
+      // Clean up
+      if (recordingUrl) {
+        URL.revokeObjectURL(recordingUrl)
+      }
+      setRecordingBlob(null)
+      setRecordingUrl(null)
+      
+    } catch (error: any) {
+      console.error('Upload failed:', error)
+      if (error.code === '23505') {
+        toast.error('This room has already shared a recording')
+      } else {
+        toast.error('Failed to upload recording')
+      }
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   // First useEffect - mounting and nickname persistence
   useEffect(() => {
@@ -397,179 +498,240 @@ export default function RoomPage({
     console.log('🔍 User ID:', userId)
     
     const initRoomSession = async () => {
-      console.log('🔍 initRoomSession called')
-      
       try {
-        // Check if room session exists
-        console.log('🔍 Checking for existing room session...')
-        const { data: existingSession, error: getError } = await getRoomSession(code)
-        console.log('🔍 getRoomSession result:', { existingSession, getError })
+        console.log('🔍 Debug: Attempting to get room session')
+        console.log('📌 Room code:', code)
+        console.log('👤 User ID:', userId)
         
-        if (!existingSession) {
-          // Create new room session
-          console.log('🔍 No existing session, creating new one...')
+        const { data: existingSession, error: getError } = await getRoomSession(code)
+        
+        console.log('📊 getRoomSession response:', { 
+          data: existingSession, 
+          error: getError,
+          errorMessage: getError?.message,
+          errorCode: getError?.code 
+        })
+        
+        if (getError) {
+          console.error('❌ Supabase error getting room session:', getError)
+          console.error('Error details:', {
+            code: getError.code,
+            message: getError.message,
+            details: getError.details,
+            hint: getError.hint
+          })
+          return
+        }
+        
+        if (existingSession) {
+          console.log('✅ Room session already exists:', existingSession)
+          setRoomSession(existingSession)
+          setTimeRemaining(existingSession.time_remaining_seconds || 0)
+          setIsTimerStarted(!!existingSession.timer_started_at)
+        } else {
+          console.log('🆕 No existing session, creating new room session...')
           const { data, error } = await createRoomSession(code, userId!)
-          console.log('🔍 createRoomSession result:', { data, error })
+          
+          console.log('✅ createRoomSession response:', { 
+            data, 
+            error,
+            errorMessage: error?.message 
+          })
           
           if (error) {
-            console.error('❌ Failed to create room session:', error)
-          } else {
-            console.log('✅ Room session created successfully:', data)
+            console.error('❌ Error creating room session:', error)
+            return
           }
-        } else {
-          console.log('✅ Room session already exists:', existingSession)
+          
+          if (data) {
+            console.log('✅ Room session created successfully:', data)
+            setRoomSession(data)
+            setTimeRemaining(0)
+            setIsTimerStarted(false)
+          }
         }
-      } catch (err) {
-        console.error('❌ Unexpected error in initRoomSession:', err)
+      } catch (error) {
+        console.error('💥 Unexpected error in initRoomSession:', error)
       }
     }
     
     if (code && userId) {
-      console.log('🔍 Both code and userId exist, initializing room session')
       initRoomSession()
     } else {
-      console.log('🔍 Missing code or userId, skipping room session init')
-      console.log('🔍 code:', code, 'userId:', userId)
+      console.log('⏳ Waiting for code and userId')
     }
   }, [code, userId])
 
-  // Add paste handler inside the component
+  // Subscribe to room session updates
   useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items
-      if (!items) return
-      
-      for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault()
-          console.log('📋 Image paste detected:', { type: item.type })
+    if (!code || !roomSession) return
+    
+    console.log('📡 Subscribing to room session updates')
+    
+    const channel = subscribeToRoomSession(code, (updatedSession) => {
+      if (updatedSession) {
+        console.log('🔄 Room session updated')
+        
+        // Update room session
+        setRoomSession(updatedSession)
+        
+        // Update timer started state
+        setIsTimerStarted(!!updatedSession.timer_started_at)
+        
+        // For timer, check if this update is from our own save
+        setTimeRemaining(prev => {
+          const isHost = updatedSession.host_user_id === userId
+          const timerRunning = !!updatedSession.timer_started_at && prev > 0
           
-          const blob = item.getAsFile()
-          if (!blob) continue
-          
-          // Convert to base64
-          const reader = new FileReader()
-          reader.onload = async (event) => {
-            const base64String = event.target?.result as string
-            console.log('📋 Image converted to base64, length:', base64String.length)
-            
-            // Create image object
-            const img = new Image()
-            img.onload = async () => {
-              // Check if image should be an artifact
-              if (base64String.length > 50000) { // 50KB threshold
-                console.log('📋 Large image detected, creating artifact')
-                
-                // Compress for preview
-                const preview = await compressImage(base64String, 400)
-                
-                // Create image artifact
-                const artifact: Artifact = {
-                  id: crypto.randomUUID(),
-                  type: 'image',
-                  title: 'Pasted Image',
-                  content: base64String, // Full quality
-                  metadata: {
-                    size: base64String.length,
-                    dimensions: { width: img.width, height: img.height }
-                  },
-                  createdBy: userId || 'unknown',
-                  createdAt: Date.now()
-                }
-                
-                artifactStore.addArtifact(artifact)
-                
-                // Create canvas object with preview
-                const imageArtifact = {
-                  id: artifact.id,
-                  type: 'image-artifact',
-                  preview: preview, // Small preview for display
-                  originalSize: artifact.metadata?.size,
-                  position: {
-                    x: window.innerWidth / 2 - 200,
-                    y: window.innerHeight / 2 - 150
-                  },
-                  size: {
-                    width: Math.min(400, img.width),
-                    height: Math.min(300, img.height * (400 / img.width))
-                  },
-                  timestamp: Date.now(),
-                  createdBy: userId || 'unknown'
-                }
-                
-                console.log('📋 Creating image artifact object:', {
-                  objectId: imageArtifact.id,
-                  objectSize: JSON.stringify(imageArtifact).length,
-                  currentCanvasObjectsCount: canvasObjects.length
-                })
-                
-                // Use handleCanvasAdd instead of direct state update
-                handleCanvasAdd({
-                  type: 'image-artifact',
-                  preview: preview,
-                  originalSize: artifact.metadata?.size,
-                  position: {
-                    x: window.innerWidth / 2 - 200,
-                    y: window.innerHeight / 2 - 150
-                  },
-                  size: {
-                    width: Math.min(400, img.width),
-                    height: Math.min(300, img.height * (400 / img.width))
-                  },
-                  createdBy: userId || 'unknown'
-                })
-                
-                console.log('✅ Image artifact added via handleCanvasAdd')
-              } else {
-                // Small image, handle normally
-                const newImage = {
-                  id: crypto.randomUUID(),
-                  type: 'image',
-                  src: base64String,
-                  position: {
-                    x: window.innerWidth / 2 - 200,
-                    y: window.innerHeight / 2 - 150
-                  },
-                  size: {
-                    width: Math.min(400, img.width),
-                    height: Math.min(300, img.height * (400 / img.width))
-                  },
-                  timestamp: Date.now()
-                }
-                
-                console.log('📋 Creating regular image object:', {
-                  objectId: newImage.id,
-                  objectSize: JSON.stringify(newImage).length,
-                  currentCanvasObjectsCount: canvasObjects.length
-                })
-                
-                // Use handleCanvasAdd instead of direct state update
-                handleCanvasAdd({
-                  type: 'image',
-                  src: base64String,
-                  position: {
-                    x: window.innerWidth / 2 - 200,
-                    y: window.innerHeight / 2 - 150
-                  },
-                  size: {
-                    width: Math.min(400, img.width),
-                    height: Math.min(300, img.height * (400 / img.width))
-                  }
-                })
-                
-                console.log('✅ Regular image added via handleCanvasAdd')
-              }
-            }
-            img.src = base64String
+          // If we're the host and actively counting down, keep our local time
+          if (isHost && timerRunning && Math.abs(prev - updatedSession.time_remaining_seconds) < 15) {
+            console.log('🎯 Host keeping local countdown:', prev)
+            return prev // Keep smooth countdown
           }
-          reader.readAsDataURL(blob)
+          
+          // Otherwise use the update
+          console.log('🔄 Updating timer from subscription:', updatedSession.time_remaining_seconds)
+          return updatedSession.time_remaining_seconds || 0
+        })
+        
+        // Check for read-only status change
+        if (updatedSession.is_readonly && !roomSession.is_readonly) {
+          toast.error("Time's up!", {
+            description: "This room is now in read-only mode."
+          })
         }
       }
+    })
+    
+    return () => {
+      console.log('🔌 Unsubscribing from room session')
+      channel.unsubscribe()
+    }
+  }, [code, roomSession?.room_code]) // Keep original dependencies only
+
+  // Timer countdown - only host updates
+  useEffect(() => {
+    // Only run countdown if:
+    // - Timer has started
+    // - Time is remaining  
+    // - User is the host
+    // - Room session exists
+    if (!isTimerStarted || timeRemaining <= 0 || !roomSession || !userId) {
+      console.log('⏰ Timer countdown skipped:', {
+        isTimerStarted,
+        timeRemaining,
+        hasRoomSession: !!roomSession,
+        hasUserId: !!userId
+      })
+      return
     }
     
-    document.addEventListener('paste', handlePaste)
-    return () => document.removeEventListener('paste', handlePaste)
-  }, [broadcast, canvasObjects.length])
+    const isHost = roomSession.host_user_id === userId
+    if (!isHost) {
+      console.log('⏰ Not host, skipping timer countdown')
+      return
+    }
+    
+    console.log('⏰ Starting timer countdown as host')
+    
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        const newTime = Math.max(0, prev - 1)
+        
+        // Log every 30 seconds for debugging
+        if (newTime % 30 === 0) {
+          console.log('⏰ Timer update:', {
+            newTime,
+            formatted: `${Math.floor(newTime / 60)}:${(newTime % 60).toString().padStart(2, '0')}`
+          })
+        }
+        
+        // Update Supabase every 10 seconds to reduce DB calls
+        if (newTime % 10 === 0) {
+          console.log('💾 Saving timer to Supabase:', newTime)
+          updateRoomTimer(code, newTime).catch(error => {
+            console.error('Error updating timer:', error)
+          })
+        }
+        
+        // When timer expires, update to read-only
+        if (newTime === 0 && prev !== 0) {
+          console.log('⏰ Timer expired! Setting room to read-only')
+          updateRoomTimer(code, 0).catch(error => {
+            console.error('Error setting room to read-only:', error)
+          })
+        }
+        
+        return newTime
+      })
+    }, 1000) // Run every second
+    
+    return () => {
+      console.log('⏰ Stopping timer countdown')
+      clearInterval(interval)
+    }
+  }, [isTimerStarted, timeRemaining, roomSession, userId, code])
+
+  // Prepare peer data
+  const allUsers = useMemo(() => {
+    const usersMap = new Map()
+    
+    // Add self first
+    usersMap.set(userId, {
+      userId, 
+      nickname: nickname || suggestedNickname || 'Anonymous User',
+      isHost: true,
+      avatarColor: avatarColor || '#9CA3AF'
+    })
+    
+    // Add online users from Supabase presence
+    onlineUsers.forEach(user => {
+      if (user.user_id !== userId) {
+        usersMap.set(user.user_id, {
+          userId: user.user_id,
+          nickname: user.nickname,
+          isHost: false,
+          avatarColor: user.avatar_color
+        })
+      }
+    })
+    
+    // Add WebRTC peers (fallback for any not in presence yet)
+    peers.forEach(peer => {
+      if (!usersMap.has(peer.userId)) {
+        usersMap.set(peer.userId, {
+          userId: peer.userId,
+      nickname: peer.nickname || 'Anonymous User',
+          isHost: false,
+          avatarColor: getAvatarColor(peer.nickname) || '#9CA3AF'
+        })
+      }
+    })
+    
+    return Array.from(usersMap.values())
+  }, [userId, nickname, suggestedNickname, avatarColor, onlineUsers, peers])
+
+  // Start timer when 2nd person joins
+  useEffect(() => {
+    // Check if we should start the timer
+    if (!roomSession || isTimerStarted || !code) return
+    
+    // Need at least 2 people to start
+    if (allUsers.length >= 2) {
+      console.log('🎯 2nd person joined! Starting timer...')
+      startRoomTimer(code)
+        .then(() => {
+          console.log('✅ Timer started successfully')
+          toast.success('Timer started!', {
+            description: 'You have 1 hour of free collaboration time'
+          })
+        })
+        .catch(error => {
+          console.error('Error starting timer:', error)
+          toast.error('Failed to start timer')
+        })
+    }
+  }, [allUsers.length, roomSession, isTimerStarted, code])
 
   // Add keyboard shortcut for deselection
   useEffect(() => {
@@ -680,6 +842,15 @@ export default function RoomPage({
   }, [canvasObjects.length])
 
   const handleCanvasAdd = async (obj: any) => {
+    // Check if room is read-only
+    if (roomSession?.is_readonly) {
+      toast.error("Time's up!", {
+        description: "This room is read-only. Add time to continue!"
+      })
+      setShowTimerModal(true) // Open the timer modal
+      return
+    }
+
     console.log('📦 handleCanvasAdd called with:', obj.type)
     
     // Check if this AI response already exists
@@ -692,8 +863,8 @@ export default function RoomPage({
       
       if (exists) {
         console.log('📦 AI response already on canvas, skipping')
-        return
-      }
+      return
+    }
     } else if (obj.type === 'ai-response') {
       console.log('⚠️ Warning: AI response without responseId - cannot deduplicate')
     }
@@ -717,8 +888,8 @@ export default function RoomPage({
     setCanvasObjects(prev => [...prev, newObject])
     if (broadcast) {
       broadcast({
-        type: 'canvas-object-add',
-        object: newObject,
+      type: 'canvas-object-add',
+      object: newObject,
       })
     }
     try {
@@ -737,6 +908,101 @@ export default function RoomPage({
       console.error('❌ Failed to save canvas object:', error)
     }
   }
+
+  // Define handlePaste after handleCanvasAdd is defined
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    const activeElement = document.activeElement as HTMLElement
+    const inputSelectors = ['input', 'textarea', '[contenteditable="true"]', '.ProseMirror']
+    const isInInput = activeElement && (
+      inputSelectors.some(selector => activeElement.matches(selector)) ||
+      activeElement.closest(inputSelectors.join(', '))
+    )
+    if (isInInput) return
+
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    let imageItem: DataTransferItem | null = null
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        imageItem = item
+        break
+      }
+    }
+    if (!imageItem) return
+
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (!file) return
+
+    try {
+      // Generate unique filename
+      const imageId = crypto.randomUUID()
+      const fileName = `${code}/${imageId}-${Date.now()}.${file.type.split('/')[1]}`
+      
+      // Upload to Supabase Storage
+      console.log('Uploading image to Supabase Storage...')
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('canvas-images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) {
+        console.error('Upload failed:', uploadError)
+        toast.error('Failed to upload image')
+        return
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('canvas-images')
+        .getPublicUrl(fileName)
+
+      console.log('Image uploaded:', publicUrl)
+
+      // Create temporary local preview for immediate display
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const tempDataUrl = e.target?.result as string
+        
+        // Add to canvas with public URL
+        const newImage = {
+          id: imageId,
+          type: 'image',
+          src: publicUrl, // Supabase Storage URL
+          tempSrc: tempDataUrl, // For immediate display
+          position: {
+            x: 100 + Math.random() * 200,
+            y: 100 + Math.random() * 200
+          },
+          size: {
+            width: 400,
+            height: 300
+          },
+          fileName: file.name,
+          fileSize: file.size
+        }
+
+        handleCanvasAdd(newImage)
+      }
+      
+      reader.readAsDataURL(file)
+      
+    } catch (error) {
+      console.error('Error processing image:', error)
+      toast.error('Failed to process image')
+    }
+  }, [code, handleCanvasAdd])
+
+  // Set up paste listener
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste)
+    return () => {
+      document.removeEventListener('paste', handlePaste)
+    }
+  }, [handlePaste])
 
   const handleObjectMove = async (id: string, x: number, y: number) => {
     setCanvasObjects(prev =>
@@ -764,8 +1030,8 @@ export default function RoomPage({
   const handleObjectRemove = async (id: string) => {
     setCanvasObjects(prev => prev.filter(obj => obj.id !== id))
     if (broadcast) {
-      broadcast({
-        type: 'canvas-object-remove',
+    broadcast({
+      type: 'canvas-object-remove',
         id,
       })
     }
@@ -866,9 +1132,9 @@ export default function RoomPage({
     )
     if (broadcast) {
       broadcast({
-        type: 'canvas-object-resize',
+      type: 'canvas-object-resize',
         id,
-        size: { width, height },
+      size: { width, height },
       })
     }
     try {
@@ -909,45 +1175,6 @@ export default function RoomPage({
       setSelectedObjects(new Set())
     }
   }
-
-  // Prepare peer data
-  const allUsers = useMemo(() => {
-    const usersMap = new Map()
-    
-    // Add self first
-    usersMap.set(userId, {
-      userId,
-      nickname: nickname || suggestedNickname || 'Anonymous User',
-      isHost: true,
-      avatarColor: avatarColor || '#9CA3AF'
-    })
-    
-    // Add online users from Supabase presence
-    onlineUsers.forEach(user => {
-      if (user.user_id !== userId) {
-        usersMap.set(user.user_id, {
-          userId: user.user_id,
-          nickname: user.nickname,
-          isHost: false,
-          avatarColor: user.avatar_color
-        })
-      }
-    })
-    
-    // Add WebRTC peers (fallback for any not in presence yet)
-    peers.forEach(peer => {
-      if (!usersMap.has(peer.userId)) {
-        usersMap.set(peer.userId, {
-          userId: peer.userId,
-          nickname: peer.nickname || 'Anonymous User',
-          isHost: false,
-          avatarColor: getAvatarColor(peer.nickname) || '#9CA3AF'
-        })
-      }
-    })
-    
-    return Array.from(usersMap.values())
-  }, [userId, nickname, suggestedNickname, avatarColor, onlineUsers, peers])
 
   // Add this helper function to get the actual selected objects
   const getSelectedObjects = () => {
@@ -1364,7 +1591,7 @@ export default function RoomPage({
               </div>
             )}
             
-            <Button
+            <Button 
               onClick={() => handleSetNickname(nicknameInput.trim() || suggestedNickname)}
               className="w-full"
               disabled={!nicknameInput.trim() && !suggestedNickname}
@@ -1384,6 +1611,9 @@ export default function RoomPage({
             peers={allUsers}
             isHost={true}
             onShare={() => setShowShareModal(true)}
+            onTimer={() => setShowTimerModal(true)}
+            timeRemaining={timeRemaining}
+            isTimerStarted={isTimerStarted}
           />
           
           {/* Canvas container - flex-1 makes it fill remaining height */}
@@ -1428,6 +1658,7 @@ export default function RoomPage({
                 console.log('✅ Broadcast sent for canvas clear')
               }}
               activeTool={activeTool}
+              isReadOnly={roomSession?.is_readonly || false}
             />
             
             {/* Canvas toolbar - positioned over canvas */}
@@ -1439,6 +1670,9 @@ export default function RoomPage({
               onDeleteSelection={handleDeleteSelection}
               onOpenAIProviders={() => setShowProviderModal(true)}
               activeProviders={providers.size}
+              isRecording={isRecording}
+              onStartRecording={startRecording}
+              onStopRecording={stopRecording}
             />
             
             {/* AI Response Cards Layer */}
@@ -1477,6 +1711,7 @@ export default function RoomPage({
                           <CanvasImage
                             id={obj.id}
                             src={obj.src}
+                            tempSrc={obj.tempSrc}
                             position={obj.position}
                             size={obj.size}
                             isSelected={selectedObjects.has(obj.id)}
@@ -1638,6 +1873,8 @@ export default function RoomPage({
             localProviders={localProviders}
             onCanvasAdd={handleCanvasAdd}
             selectedObjects={getSelectedObjects()}
+            roomSession={roomSession}
+            onTimerModalOpen={() => setShowTimerModal(true)}
           />
 
           {/* Share Modal */}
@@ -1647,6 +1884,13 @@ export default function RoomPage({
             onOpenChange={setShowShareModal}
           />
 
+          {/* Timer Modal */}
+          <TimerModal
+            open={showTimerModal}
+            onOpenChange={setShowTimerModal}
+            roomCode={code}
+          />
+
           {/* AI Provider Modal */}
           {showProviderModal && (
             <AIProviderModal
@@ -1654,9 +1898,6 @@ export default function RoomPage({
               onClose={() => setShowProviderModal(false)}
               onProviderAdded={(provider, apiKey) => {
                 handleAddProvider(provider, apiKey)
-              }}
-              onProviderRemoved={(provider) => {
-                handleRemoveProvider(provider)
               }}
               existingProviders={new Set([
                 ...Array.from(localProviders || []), 
@@ -1673,6 +1914,37 @@ export default function RoomPage({
             suggestedNickname={suggestedNickname}
             avatarColor={avatarColor || '#9CA3AF'}
           />
+
+          {/* Recording Indicator */}
+          <RecordingIndicator 
+            isRecording={isRecording} 
+            recordingTime={recordingTime} 
+          />
+
+          {/* Recording Preview Modal */}
+          <RecordingPreviewModal
+            isOpen={showPreview}
+            onClose={() => setShowPreview(false)}
+            videoUrl={recordingUrl}
+            videoBlob={recordingBlob}
+            onUpload={() => {}}
+            isUploading={isUploading}
+            onGalleryUpload={() => {
+              setShowPreview(false)
+              setShowGalleryUpload(true)
+            }}
+          />
+
+          {/* Gallery Upload Modal */}
+          <GalleryUploadModal
+            isOpen={showGalleryUpload}
+            onClose={() => setShowGalleryUpload(false)}
+            onConfirm={handleUploadToGallery}
+            isUploading={isUploading}
+          />
+
+          {/* Bolt Badge */}
+          <BoltBadge size="small" />
         </>
       )}
     </div>

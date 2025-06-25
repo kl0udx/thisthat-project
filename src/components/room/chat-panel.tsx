@@ -51,6 +51,8 @@ interface ChatPanelProps {
     src?: string
     provider?: string
   }>
+  roomSession?: any
+  onTimerModalOpen?: () => void
 }
 
 function detectProvider(input: string): string | undefined {
@@ -65,6 +67,99 @@ function getApiKey(provider: string): string | null {
   return localStorage.getItem(`api_key_${provider}`)
 }
 
+// Helper to fetch and convert image to base64
+const prepareImageForAI = async (imageUrl: string) => {
+  try {
+    console.log('🔧 prepareImageForAI fetching from:', imageUrl)
+    
+    const response = await fetch(imageUrl)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64 = reader.result as string
+        
+        // Extract mime type and base64 data
+        const mimeMatch = base64.match(/^data:(.+?);base64,/)
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+        const base64Data = base64.split(',')[1]
+        
+        if (!base64Data) {
+          reject(new Error('No base64 data found'))
+          return
+        }
+        
+        console.log('🔧 Image prepared:', {
+          mimeType,
+          dataLength: base64Data.length
+        })
+        
+        // Return in correct format for Anthropic
+        resolve({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mimeType,
+            data: base64Data // Just the base64 string, no data: prefix
+          }
+        })
+      }
+      reader.onerror = () => reject(new Error('Failed to read image'))
+      reader.readAsDataURL(blob)
+    })
+  } catch (error) {
+    console.error('❌ prepareImageForAI error:', error)
+    return null
+  }
+}
+
+// Prepare context for selected objects
+const prepareSelectedObjectsContext = async (selectedObjects: any[]) => {
+  const contextParts = []
+  for (const [index, obj] of selectedObjects.entries()) {
+    if (obj.type === 'ai-response') {
+      contextParts.push({
+        type: 'text',
+        text: `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
+      })
+    } else if (obj.type === 'image') {
+      console.log('🖼️ Processing image object:', {
+        id: obj.id,
+        hasSrc: !!obj.src,
+        srcType: typeof obj.src,
+        srcPreview: obj.src?.substring(0, 100),
+        hasTempSrc: !!obj.tempSrc,
+        tempSrcPreview: obj.tempSrc?.substring(0, 50)
+      })
+      
+      try {
+        // Before calling prepareImageForAI
+        console.log('📸 About to call prepareImageForAI with:', obj.src)
+        
+        const imageData = await prepareImageForAI(obj.src)
+        
+        console.log('📦 prepareImageForAI returned:', {
+          hasData: !!imageData,
+          dataType: typeof imageData,
+          dataStructure: imageData ? Object.keys(imageData) : null,
+          isObject: typeof imageData === 'object'
+        })
+        
+        contextParts.push({ type: 'image', data: imageData })
+      } catch (error) {
+        console.error('Failed to prepare image:', error)
+        contextParts.push({ type: 'text', text: `[Image ${index + 1}]: Failed to load image\n` })
+      }
+    }
+  }
+  return contextParts
+}
+
 export function ChatPanel({
   roomCode,
   userId,
@@ -76,7 +171,9 @@ export function ChatPanel({
   providers,
   localProviders,
   onCanvasAdd,
-  selectedObjects
+  selectedObjects,
+  roomSession,
+  onTimerModalOpen
 }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [isMinimized, setIsMinimized] = useState(false)
@@ -105,9 +202,19 @@ export function ChatPanel({
   }, [messages])
 
   const handleSendMessage = async () => {
+    // Check if room is read-only
+    if (roomSession?.is_readonly) {
+      toast.error("Time's up!", {
+        description: "This room is read-only. Add time to continue!"
+      })
+      onTimerModalOpen?.() // Open the timer modal
+      return
+    }
+
     if (!input.trim()) return
     
     const messageContent = input.trim()
+    console.log('📝 Processing message:', messageContent)
     
     try {
       // Send message to Supabase
@@ -120,13 +227,18 @@ export function ChatPanel({
         ai_provider: messageContent.startsWith('@') ? detectProvider(messageContent) : undefined
       })
       
+      console.log('✅ Message sent to Supabase:', sentMessage.id)
+      
       // Clear input immediately
       setInput('')
       
       // Handle AI commands AFTER message is sent
       if (messageContent.startsWith('@')) {
+        console.log('🤖 Detected AI command, parsing...')
         const parsed = parseMessage(messageContent)
+        console.log('📋 Parsed command:', parsed)
         if (parsed.type === 'ai') {
+          console.log('🎯 Calling handleAICommand...')
           // Call handleAICommand with the parsed message
           await handleAICommand(parsed, sentMessage.id)
         }
@@ -138,6 +250,23 @@ export function ChatPanel({
   }
 
   const handleAICommand = async (parsed: any, messageId: string) => {
+    // Check if room is read-only
+    if (roomSession?.is_readonly) {
+      toast.error("Time's up!", {
+        description: "This room is read-only. Add time to continue!"
+      })
+      onTimerModalOpen?.() // Open the timer modal
+      return
+    }
+
+    console.log('🎯 handleAICommand started:', {
+      provider: parsed.command,
+      prompt: parsed.prompt,
+      selectedObjectsReceived: selectedObjects,
+      selectedObjectsCount: selectedObjects?.length || 0,
+      firstSelectedObject: selectedObjects?.[0]
+    })
+    console.log('🎯 handleAICommand ENTRY POINT - Function called!')
     console.log('🚀 handleAICommand ACTUALLY CALLED!', { parsed, messageId })
     console.log('Provider type:', parsed.command === 'ai' ? 'anthropic' : parsed.command)
     console.log('Local providers:', localProviders)
@@ -157,54 +286,25 @@ export function ChatPanel({
     console.log('Do we have this provider locally?', localProviders.has(providerType))
 
     let enhancedPrompt = parsed.prompt
-    let imageContent: any[] = []  // For Claude's vision API
+    let imageContent: any[] = []
 
     if (selectedObjects && selectedObjects.length > 0) {
-      console.log('Including selected objects in context:', selectedObjects)
+      const contextParts = await prepareSelectedObjectsContext(selectedObjects)
+      const textParts = contextParts.filter(p => p.type === 'text').map(p => p.text)
+      imageContent = contextParts.filter(p => p.type === 'image').map(p => p.data)
       
-      // Create truncated context for display in chat messages
-      const contextParts = selectedObjects.map((obj, index) => {
-        if (obj.type === 'ai-response') {
-          // Truncate the response content for display
-          const content = obj.content || ''
-          const truncatedContent = content.length > 150 
-            ? content.substring(0, 150) + '... (truncated)'
-            : content
-          
-          return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${truncatedContent}\n`
-        } else if (obj.type === 'image') {
-          // For images, we'll handle them separately for Claude
-          imageContent.push({
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/png',  // You might need to detect the actual type
-              data: obj.src?.split(',')[1] || ''  // Remove the data:image/png;base64, prefix
-            }
-          })
-          return `[Selected Image ${index + 1}]: Image selected for context\n`
-        }
-        return ''
-      }).filter(Boolean)
-
-      // For display in chat
-      const displayPrompt = contextParts.length > 0
-        ? `Context:\n\n${contextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
-        : parsed.prompt
-
-      // But for the actual AI API call, still use the full context
-      const fullContextParts = selectedObjects.map((obj, index) => {
-        if (obj.type === 'ai-response') {
-          return `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
-        } else if (obj.type === 'image') {
-          return `[Selected Image ${index + 1}]: User has selected an image\n`
-        }
-        return ''
-      }).filter(Boolean)
-
-      enhancedPrompt = fullContextParts.length > 0
-        ? `Context:\n\n${fullContextParts.join('\n---\n\n')}\n\n---\n\nUser request: ${parsed.prompt}`
-        : parsed.prompt
+      // Debug logging for image data
+      console.log('🖼️ Image prepared:', {
+        hasImage: imageContent.length > 0,
+        imageCount: imageContent.length,
+        imageFormat: imageContent[0] ? typeof imageContent[0] : 'no image',
+        imagePreview: imageContent[0] ? imageContent[0].source.data.substring(0, 50) + '...' : 'no image',
+        isDataUrl: imageContent[0] ? imageContent[0].source.data.startsWith('data:') : false
+      })
+      
+      if (textParts.length > 0) {
+        enhancedPrompt = textParts.join('\n---\n\n') + '\n\n---\n\nUser request: ' + parsed.prompt
+      }
     }
 
     if (localProviders.has(providerType)) {
@@ -228,18 +328,49 @@ export function ChatPanel({
               apiKey: apiKey,
               dangerouslyAllowBrowser: true
             })
+            // Change the model based on whether images are selected
+            const model = imageContent.length > 0 ? 'claude-3-5-sonnet-20241022' : 'claude-3-haiku-20240307'
+            
             // Build message content
             const messageContent: any[] = []
             if (imageContent.length > 0) {
-              messageContent.push(...imageContent)
+              console.log('🤖 Building Anthropic message:', {
+                hasImages: imageContent.length > 0,
+                imageContentArray: imageContent,
+                messageContentBeforeImages: messageContent
+              })
+              
+              // Format images for Anthropic
+              imageContent.forEach(img => {
+                if (img && typeof img === 'object' && 'source' in img && img.source) {
+                  const base64Data = img.source.data.split(',')[1] // Remove data: prefix
+                  messageContent.push({
+                    type: 'image',
+                    source: {
+                      type: 'base64',
+                      media_type: img.source.media_type,
+                      data: base64Data
+                    }
+                  })
+                }
+              })
             }
             messageContent.push({
               type: 'text',
               text: enhancedPrompt
             })
-            console.log('Sending to Claude with', imageContent.length, 'images')
+            
+            // After messageContent is built
+            console.log('📤 Final messageContent for Claude:', {
+              type: typeof messageContent,
+              isArray: Array.isArray(messageContent),
+              length: Array.isArray(messageContent) ? messageContent.length : 'not array',
+              content: messageContent
+            })
+            
+            console.log('Sending to Claude with', imageContent.length, 'images using model:', model)
             const response = await anthropic.messages.create({
-              model: 'claude-3-haiku-20240307',
+              model: model,
               max_tokens: 2000,
               messages: [{
                 role: 'user',
@@ -268,11 +399,34 @@ export function ChatPanel({
               apiKey: apiKey,
               dangerouslyAllowBrowser: true
             })
+            
+            // Use vision model when images are present
+            const model = 'gpt-4-turbo' // Supports both text and vision
+            
+            // Format message content based on whether images exist
+            const hasImages = imageContent.length > 0
+            console.log('🤖 Processing distributed OpenAI request:', {
+              hasImages,
+              imageCount: hasImages ? imageContent.length : 0
+            })
+            
+            const messageContent = hasImages 
+              ? [
+                  { type: 'text', text: enhancedPrompt },
+                  ...imageContent.filter(img => img && typeof img === 'object' && 'source' in img && img.source).map(img => ({
+                    type: 'image_url',
+                    image_url: { 
+                      url: `data:${img.source.media_type};base64,${img.source.data}` // Convert back to data URL for OpenAI
+                    }
+                  }))
+                ]
+              : enhancedPrompt
+
             const completion = await openai.chat.completions.create({
-              model: 'gpt-4-turbo-preview',
+              model: model,
               messages: [{
                 role: 'user',
-                content: enhancedPrompt
+                content: messageContent
               }]
             })
             responseText = completion.choices[0].message.content || ''
@@ -280,20 +434,38 @@ export function ChatPanel({
           }
           case 'google': {
             console.log('Using Google API...')
-            const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey
-              },
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: enhancedPrompt
-                  }]
-                }]
+            // Use gemini-1.5-pro (supports both text and vision)
+            const model = 'gemini-1.5-pro'
+            
+            // Build parts array with images if present
+            const parts: any[] = [{ text: enhancedPrompt }]
+            if (imageContent.length > 0) {
+              imageContent.filter(img => img && typeof img === 'object' && 'source' in img && img.source).forEach(img => {
+                const base64Data = img.source.data.split(',')[1] // Remove data: prefix
+                parts.push({
+                  inline_data: {
+                    mime_type: img.source.media_type,
+                    data: base64Data
+                  }
+                })
               })
-            })
+            }
+
+            const geminiResponse = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-goog-api-key': apiKey
+                },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: parts
+                  }]
+                })
+              }
+            )
             const geminiData = await geminiResponse.json()
             responseText = geminiData.candidates[0].content.parts[0].text
             break
@@ -349,15 +521,40 @@ export function ChatPanel({
       console.log(`Provider ${providerType} not available locally, routing request...`)
       setIsProcessing(true)
       try {
-        await createAIRequest({
+        // Prepare the request data
+        const requestData: any = {
           room_code: roomCode,
           provider: providerType,
-          prompt: enhancedPrompt,
+          prompt: enhancedPrompt, // Use enhancedPrompt not just prompt
           context: {},
           requested_by_user_id: userId,
           requested_by_nickname: nickname,
           status: 'pending'
-        })
+        }
+
+        // For distributed AI with images, store URLs not base64
+        if (selectedObjects && selectedObjects.length > 0) {
+          const selectedData = selectedObjects.map(obj => {
+            if (obj.type === 'image') {
+              return {
+                type: 'image',
+                src: obj.src // This is the Supabase Storage URL
+              }
+            }
+            return {
+              type: obj.type,
+              content: obj.content || obj.prompt
+            }
+          })
+          
+          requestData.metadata = {
+            has_selected_objects: true,
+            selected_objects: selectedData
+          }
+        }
+
+        // Create the request
+        await createAIRequest(requestData)
         toast(`Request sent! Waiting for someone with ${parsed.command}...`)
       } catch (error) {
         console.error('Failed to create AI request:', error)
@@ -469,30 +666,160 @@ export function ChatPanel({
             if (!apiKey) return
             try {
               let responseText = ''
+              
+              // When processing an AI request with images
+              let imageContent: any[] = []
+              let contextContent = []
+              
+              if (request.metadata?.selected_objects) {
+                console.log('📥 Processing request with selected objects:', request.metadata)
+                
+                // Process each selected object
+                for (const obj of request.metadata.selected_objects) {
+                  if (obj.type === 'image' && obj.src) {
+                    console.log('🖼️ Processing distributed image:', obj.src)
+                    
+                    try {
+                      // Fetch and prepare the image from Supabase Storage URL
+                      const imageData = await prepareImageForAI(obj.src)
+                      
+                      if (imageData && typeof imageData === 'object' && 'source' in imageData && imageData.source && typeof imageData.source === 'object' && 'data' in imageData.source) {
+                        console.log('✅ Image prepared for AI:', {
+                          hasData: !!imageData,
+                          hasSource: !!imageData.source,
+                          hasBase64Data: !!imageData.source.data
+                        })
+                        imageContent.push(imageData)
+                      } else {
+                        console.error('❌ Failed to prepare image data')
+                      }
+                    } catch (error) {
+                      console.error('❌ Error preparing image:', error)
+                    }
+                  } else if (obj.content) {
+                    contextContent.push(obj.content)
+                  }
+                }
+              }
+              
+              // Build enhanced prompt with context
+              let enhancedPrompt = request.prompt
+              if (contextContent.length > 0) {
+                enhancedPrompt = `Context: ${contextContent.join('\n\n')}\n\nUser request: ${request.prompt}`
+              }
+              
+              console.log('📤 Calling AI with:', {
+                prompt: enhancedPrompt,
+                imageCount: imageContent.length,
+                provider: request.provider
+              })
+              
               if (request.provider === 'anthropic') {
                 const anthropic = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+                const model = 'claude-3-5-sonnet-20241022'
+                
+                const hasImages = imageContent.length > 0
+                console.log('🤖 Processing distributed Anthropic request:', { hasImages })
+                
+                // Build message content - images first, then text (Anthropic requirement)
+                const messageContent: any[] = []
+                
+                // Add images first (Anthropic requires images before text)
+                if (hasImages) {
+                  imageContent.forEach(img => {
+                    if (img && typeof img === 'object' && 'source' in img && img.source) {
+                      // Ensure we have just the base64 data, not the full data URL
+                      const base64Data = img.source.data.includes(',') 
+                        ? img.source.data.split(',')[1] 
+                        : img.source.data
+                      
+                      messageContent.push({
+                        type: 'image',
+                        source: {
+                          type: 'base64',
+                          media_type: img.source.media_type,
+                          data: base64Data
+                        }
+                      })
+                    }
+                  })
+                }
+                
+                // Add text
+                messageContent.push({
+                  type: 'text',
+                  text: enhancedPrompt
+                })
+                
                 const response = await anthropic.messages.create({
-                  model: 'claude-3-haiku-20240307',
-                  max_tokens: 1024,
-                  messages: [{ role: 'user', content: request.prompt }]
+                  model: model,
+                  max_tokens: 2000,
+                  messages: [{ role: 'user', content: messageContent }]
                 })
                 responseText = response.content[0].type === 'text' ? response.content[0].text : ''
               } else if (request.provider === 'openai') {
                 const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+                const model = 'gpt-4-turbo'
+                
+                const hasImages = imageContent.length > 0
+                console.log('🤖 Processing distributed OpenAI request:', {
+                  hasImages,
+                  imageCount: hasImages ? imageContent.length : 0
+                })
+                
+                // Format message content based on whether images exist
+                const messageContent = hasImages 
+                  ? [
+                      { type: 'text', text: enhancedPrompt },
+                      ...imageContent.filter(img => img && typeof img === 'object' && 'source' in img && img.source).map(img => ({
+                        type: 'image_url',
+                        image_url: { 
+                          url: `data:${img.source.media_type};base64,${img.source.data}` // Convert back to data URL for OpenAI
+                        }
+                      }))
+                    ]
+                  : enhancedPrompt
+
                 const completion = await openai.chat.completions.create({
-                  model: 'gpt-4-turbo-preview',
-                  messages: [{ role: 'user', content: request.prompt }]
+                  model: model,
+                  messages: [{ role: 'user', content: messageContent }]
                 })
                 responseText = completion.choices[0].message.content || ''
               } else if (request.provider === 'google') {
-                const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
+                const model = 'gemini-1.5-pro'
+                
+                const hasImages = imageContent.length > 0
+                console.log('🤖 Processing distributed Google request:', {
+                  hasImages,
+                  imageCount: hasImages ? imageContent.length : 0
+                })
+                
+                // Build parts array with images if present
+                const parts: any[] = [{ text: enhancedPrompt }]
+                if (hasImages) {
+                  imageContent.filter(img => img && typeof img === 'object' && 'source' in img && img.source).forEach(img => {
+                    // Ensure we have just the base64 data, not the full data URL
+                    const base64Data = img.source.data.includes(',') 
+                      ? img.source.data.split(',')[1] 
+                      : img.source.data
+                    
+                    parts.push({
+                      inline_data: {
+                        mime_type: img.source.media_type,
+                        data: base64Data
+                      }
+                    })
+                  })
+                }
+                
+                const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
                     'x-goog-api-key': apiKey
                   },
                   body: JSON.stringify({
-                    contents: [{ parts: [{ text: request.prompt }] }]
+                    contents: [{ parts: parts }]
                   })
                 })
                 const geminiData = await geminiResponse.json()

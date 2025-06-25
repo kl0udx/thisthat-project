@@ -37,6 +37,7 @@ interface InfiniteCanvasProps {
   onShapeDelete?: (ids: string[]) => void
   onClear?: () => void
   activeTool?: 'pen' | 'select' | 'eraser'
+  isReadOnly?: boolean
 }
 
 const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({ 
@@ -44,7 +45,8 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
   onAIResponseAdd,
   onShapeDelete,
   onClear,
-  activeTool = 'pen'
+  activeTool = 'pen',
+  isReadOnly
 }, ref) => {
   console.log('Active tool:', activeTool)
   
@@ -219,6 +221,11 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
 
   // Update mouse event handlers
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
+    // Check if canvas is read-only
+    if (isReadOnly) {
+      return
+    }
+
     const nativeEvent = getNativeEvent(e)
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
@@ -255,7 +262,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
         setCurrentPath([worldPos])
       }
     }
-  }, [isPanning, screenToWorld, activeTool, handleEraser])
+  }, [isPanning, screenToWorld, activeTool, handleEraser, isReadOnly])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | MouseEvent) => {
     const nativeEvent = getNativeEvent(e)
@@ -354,7 +361,23 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
       10, 
       canvas.height - 10
     )
-  }, [camera, scale, paths, currentPath])
+
+    // Draw read-only overlay
+    if (isReadOnly) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      
+      ctx.fillStyle = '#666'
+      ctx.font = '16px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(
+        'READ-ONLY MODE - Time has expired. Add time to continue!',
+        canvas.width / 2,
+        canvas.height / 2
+      )
+      ctx.textAlign = 'left'
+    }
+  }, [camera, scale, paths, currentPath, isReadOnly])
 
   // Set up canvas and event listeners
   useEffect(() => {
@@ -373,6 +396,13 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     }
     handleResize()
     window.addEventListener('resize', handleResize)
+
+    // Set cursor based on read-only state
+    if (isReadOnly) {
+      canvas.style.cursor = 'not-allowed'
+    } else {
+      canvas.style.cursor = 'crosshair'
+    }
 
     // Add event listeners
     canvas.addEventListener('mousedown', handleMouseDown)

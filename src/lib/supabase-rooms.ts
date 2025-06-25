@@ -35,9 +35,14 @@ export async function getRoomSession(roomCode: string): Promise<{ data: RoomSess
     .from('room_sessions')
     .select('*')
     .eq('room_code', roomCode)
-    .single()
+    .maybeSingle()
 
-  return { data, error }
+  if (error) {
+    console.error('Error fetching room session:', error)
+    return { data: null, error }
+  }
+  
+  return { data, error: null }
 }
 
 // Start timer when 2nd person joins

@@ -12,7 +12,9 @@ import {
   Circle,
   Type,
   Bot,
-  Plus
+  Plus,
+  Video,
+  Camera
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -26,6 +28,9 @@ interface CanvasToolbarProps {
   onDeleteSelection: () => void
   onOpenAIProviders: () => void
   activeProviders: number
+  isRecording?: boolean
+  onStartRecording?: () => void
+  onStopRecording?: () => void
 }
 
 export function CanvasToolbar({ 
@@ -35,7 +40,10 @@ export function CanvasToolbar({
   hasSelection,
   onDeleteSelection,
   onOpenAIProviders,
-  activeProviders
+  activeProviders,
+  isRecording,
+  onStartRecording,
+  onStopRecording
 }: CanvasToolbarProps) {
   const tools = [
     { id: 'select', icon: MousePointer, label: 'Select' },
@@ -122,6 +130,19 @@ export function CanvasToolbar({
             <Plus className="h-2 w-2" />
           </Badge>
         )}
+      </Button>
+
+      <Separator orientation="vertical" className="mx-1 h-6" />
+
+      <Button
+        onClick={() => isRecording ? onStopRecording?.() : onStartRecording?.()}
+        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        title={isRecording ? "Stop Recording" : "Start Recording"}
+      >
+        <Camera className={cn(
+          "h-5 w-5",
+          isRecording && "text-red-500"
+        )} />
       </Button>
     </div>
   )

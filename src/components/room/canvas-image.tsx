@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 interface CanvasImageProps {
   id: string
   src: string
+  tempSrc?: string // Temporary local preview
   position: { x: number; y: number }
   size: { width: number; height: number }
   onMove: (id: string, x: number, y: number) => void
@@ -21,6 +22,7 @@ interface CanvasImageProps {
 export function CanvasImage({
   id,
   src,
+  tempSrc,
   position,
   size,
   onMove,
@@ -31,7 +33,12 @@ export function CanvasImage({
 }: CanvasImageProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const imageRef = useRef<HTMLDivElement>(null)
+
+  // Use tempSrc for immediate display, fallback to src
+  const displaySrc = tempSrc || src
 
   // Drag logic
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -131,11 +138,26 @@ export function CanvasImage({
         isSelected ? "ring-4 ring-blue-500" : "ring-2 ring-transparent hover:ring-gray-300",
         "transition-all duration-200"
       )}>
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        )}
+        
         <img 
-          src={src} 
-          alt="Pasted image" 
-          className="w-full h-full object-contain bg-white"
+          src={imageError ? 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMCAzMEg3MFY3MEgzMFYzMFoiIGZpbGw9IiNEN0Q5REIiLz4KPHBhdGggZD0iTTM1IDM1SDY1VjY1SDM1VjM1WiIgZmlsbD0iI0M3Q0FDQyIvPgo8L3N2Zz4K' : displaySrc}
+          alt="Canvas image" 
+          className={cn(
+            "w-full h-full object-contain bg-white",
+            isLoading && "opacity-0"
+          )}
           draggable={false}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setImageError(true)
+            setIsLoading(false)
+            console.error('Failed to load image:', src)
+          }}
         />
         
         {/* Controls on hover */}

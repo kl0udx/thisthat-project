@@ -1,6 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { PlayCircle } from 'lucide-react'
+import Link from 'next/link'
+import { RoomTimer } from '@/components/room/room-timer'
 
 interface RoomHeaderProps {
   roomCode: string
@@ -13,6 +16,9 @@ interface RoomHeaderProps {
   currentUserId: string
   isHost: boolean
   onShare?: () => void
+  onTimer?: () => void
+  timeRemaining?: number
+  isTimerStarted?: boolean
 }
 
 export function RoomHeader({
@@ -20,7 +26,10 @@ export function RoomHeader({
   peers,
   currentUserId,
   isHost,
-  onShare
+  onShare,
+  onTimer,
+  timeRemaining = 0,
+  isTimerStarted = false
 }: RoomHeaderProps) {
   console.log('Peers in RoomHeader:', JSON.stringify(peers, null, 2))
   return (
@@ -49,10 +58,28 @@ export function RoomHeader({
         })}
       </div>
       
-      {/* Right side - share button */}
-      <Button onClick={onShare} variant="outline" size="sm">
-        Share
-      </Button>
+      {/* Center - timer */}
+      <div className="flex-1 flex justify-center">
+        <RoomTimer
+          timeRemaining={timeRemaining}
+          isTimerStarted={isTimerStarted}
+          userCount={peers.length}
+          onClick={onTimer || (() => {})}
+        />
+      </div>
+      
+      {/* Right side - buttons */}
+      <div className="flex gap-2">
+        <Link href="/gallery">
+          <Button variant="outline" size="sm">
+            <PlayCircle className="mr-2 h-4 w-4" />
+            Gallery
+          </Button>
+        </Link>
+        <Button onClick={onShare} variant="outline" size="sm">
+          Share
+        </Button>
+      </div>
     </div>
   )
 } 

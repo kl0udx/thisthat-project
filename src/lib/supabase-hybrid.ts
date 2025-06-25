@@ -211,16 +211,136 @@ export function createPresenceChannel(roomCode: string) {
 
 // Get all online users from presence state
 export function getOnlineUsers(channel: any): RoomPresence[] {
-  const state = channel.presenceState()
-  const users: RoomPresence[] = []
+  const presence = channel.presenceState()
+  return Object.values(presence).flat().map((user: any) => ({
+    user_id: user.user_id,
+    nickname: user.nickname,
+    avatar_color: user.avatar_color,
+    joined_at: user.joined_at
+  }))
+}
+
+// Gallery functions
+export async function checkRoomSharedToGallery(roomCode: string) {
+  const { data, error } = await supabase
+    .from('room_sessions')
+    .select('shared_to_gallery')
+    .eq('room_code', roomCode)
+    .single()
   
-  // Presence state is an object with user IDs as keys
-  Object.keys(state).forEach(key => {
-    if (state[key] && state[key].length > 0) {
-      // Get the most recent presence for this user
-      users.push(state[key][0] as RoomPresence)
-    }
+  if (error) {
+    console.error('Error checking gallery status:', error)
+    return false
+  }
+  
+  return data?.shared_to_gallery || false
+}
+
+export async function uploadRecordingToStorage(
+  roomCode: string,
+  videoBlob: Blob,
+  userId: string
+) {
+  const fileName = `${roomCode}/${userId}-${Date.now()}.webm`
+  
+  const { data, error } = await supabase.storage
+    .from('recordings')
+    .upload(fileName, videoBlob, {
+      contentType: 'video/webm',
+      upsert: false
+    })
+  
+  if (error) throw error
+  
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage
+    .from('recordings')
+    .getPublicUrl(fileName)
+  
+  return publicUrl
+}
+
+export async function createGalleryEntry(entry: {
+  room_code: string
+  title?: string
+  description?: string
+  video_url: string
+  duration_seconds?: number
+  created_by_user_id: string
+  created_by_nickname: string
+}) {
+  const { data, error } = await supabase
+    .from('gallery')
+    .insert(entry)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+export async function addBonusTimeToRoom(roomCode: string, bonusMinutes: number = 10) {
+  // First get current time remaining
+  const { data: session, error: fetchError } = await supabase
+    .from('room_sessions')
+    .select('time_remaining_seconds')
+    .eq('room_code', roomCode)
+    .single()
+
+  if (fetchError) throw fetchError
+
+  const newTimeRemaining = (session?.time_remaining_seconds || 0) + (bonusMinutes * 60)
+
+  // Add bonus time and mark as shared
+  const { error } = await supabase
+    .from('room_sessions')
+    .update({
+      time_remaining_seconds: newTimeRemaining,
+      shared_to_gallery: true,
+      gallery_bonus_applied_at: new Date().toISOString()
+    })
+    .eq('room_code', roomCode)
+  
+  if (error) throw error
+}
+
+// Gallery functions
+export async function getGalleryVideos(
+  filter: 'recent' | 'popular' | 'featured' = 'recent',
+  limit = 20
+) {
+  let query = supabase
+    .from('gallery')
+    .select('*')
+    .limit(limit)
+  
+  switch (filter) {
+    case 'recent':
+      query = query.order('created_at', { ascending: false })
+      break
+    case 'popular':
+      query = query.order('views', { ascending: false })
+      break
+    case 'featured':
+      // For now, just show most viewed. Later you can add a featured flag
+      query = query.order('views', { ascending: false }).limit(8)
+      break
+  }
+  
+  const { data, error } = await query
+  
+  if (error) {
+    console.error('Error fetching gallery videos:', error)
+    return []
+  }
+  
+  return data || []
+}
+
+export async function incrementVideoViews(videoId: string) {
+  const { error } = await supabase.rpc('increment_gallery_views', {
+    video_id: videoId
   })
   
-  return users
+  if (error) console.error('Error incrementing views:', error)
 } 

@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { BoltBadge } from '@/components/ui/bolt-badge'
+import { PlayCircle } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -30,6 +32,16 @@ export default function Home() {
           </Link>
         </div>
 
+        {/* Gallery Link */}
+        <div className="flex justify-center">
+          <Link href="/gallery">
+            <Button variant="outline" size="lg">
+              <PlayCircle className="mr-2 h-4 w-4" />
+              Browse Gallery
+            </Button>
+          </Link>
+        </div>
+
         {/* Features */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-muted-foreground">
           <div className="space-y-2">
@@ -46,6 +58,8 @@ export default function Home() {
           </div>
         </div>
       </div>
+      
+      <BoltBadge size="large" />
     </main>
   )
 }
