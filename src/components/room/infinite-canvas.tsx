@@ -48,7 +48,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
   activeTool = 'pen',
   isReadOnly
 }, ref) => {
-  console.log('Active tool:', activeTool)
+  // Removed for production: console.log('Active tool:', activeTool)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [selectedShapes, setSelectedShapes] = useState<Set<string>>(new Set())
@@ -242,7 +242,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     } else if (nativeEvent.button === 0) {
       // Left click
       if (activeTool === 'eraser' && !nativeEvent.shiftKey && !isPanning) {
-        console.log('Starting eraser')
+        // Removed for production: console.log('Starting eraser')
         setIsErasing(true)
         const worldPos = screenToWorld(x, y)
         handleEraser(worldPos.x, worldPos.y)
@@ -276,7 +276,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
       })
       setLastMousePos({ x: nativeEvent.clientX, y: nativeEvent.clientY })
     } else if (isErasing && activeTool === 'eraser') {
-      console.log('Erasing...')
+      // Removed for production: console.log('Erasing...')
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const x = nativeEvent.clientX - rect.left
@@ -383,11 +383,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) {
+      // Removed for production: console.log('Setting up canvas')
       console.warn('Canvas ref is null during setup')
       return
     }
-
-    console.log('Setting up canvas')
 
     // Initial resize
     const handleResize = () => {
@@ -418,10 +417,10 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     }
     animate()
 
-    console.log('Canvas setup complete')
+    // Removed for production: console.log('Canvas setup complete')
 
     return () => {
-      console.log('Cleaning up canvas')
+      // Removed for production: console.log('Cleaning up canvas')
       window.removeEventListener('resize', handleResize)
       canvas.removeEventListener('mousedown', handleMouseDown)
       canvas.removeEventListener('mousemove', handleMouseMove)
@@ -561,7 +560,7 @@ const InfiniteCanvas = forwardRef<InfiniteCanvasRef, InfiniteCanvasProps>(({
     canvas.width = container.clientWidth
     canvas.height = container.clientHeight
     
-    console.log('Canvas resized to:', canvas.width, 'x', canvas.height)
+    // Removed for production: console.log('Canvas resized to:', canvas.width, 'x', canvas.height)
   }, [])
 
   return (

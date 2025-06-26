@@ -50,8 +50,7 @@ export function ShareModal({ roomCode, open, onOpenChange }: ShareModalProps) {
           url: roomUrl
         })
       } catch (err) {
-        // User cancelled or error
-        console.log('Share cancelled or failed')
+        // Removed for production: console.log('Share cancelled or failed')
       }
     } else {
       // Fallback to copying link

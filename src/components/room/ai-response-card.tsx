@@ -40,7 +40,7 @@ export function AIResponseCard({
   onSelect
 }: AIResponseCardProps) {
   // Add validation
-  console.log('AIResponseCard props:', { id, content, prompt, provider })
+  // Removed for production: console.log('AIResponseCard props:', { id, content, prompt, provider })
   if (!content) {
     console.error('AIResponseCard received undefined content!')
     return null
@@ -254,15 +254,15 @@ export function AIResponseCard({
   const userQuestion = parsePrompt(prompt)
 
   // Debug logging to verify parsing
-  console.log('🔍 AIResponseCard parsing:', {
-    originalContent: content.substring(0, 100) + '...',
-    hasContext,
-    contextLength: context.length,
-    responseLength: response.length,
-    originalPrompt: prompt.substring(0, 100) + '...',
-    userQuestion,
-    promptContainsContext: prompt.includes('Context:')
-  })
+  // Removed for production: console.log('🔍 AIResponseCard parsing:', {
+  //   originalContent: content.substring(0, 100) + '...',
+  //   hasContext,
+  //   contextLength: context.length,
+  //   responseLength: response.length,
+  //   originalPrompt: prompt.substring(0, 100) + '...',
+  //   userQuestion,
+  //   promptContainsContext: prompt.includes('Context:')
+  // })
 
   return (
     <motion.div

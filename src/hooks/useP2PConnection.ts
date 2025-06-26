@@ -19,15 +19,15 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
   useEffect(() => {
     // Skip if no required params
     if (!roomCode || !userId || !nickname) {
-      console.log('🔍 P2P Connection skipped - missing params:', { roomCode, userId, nickname })
+      // Removed for production: console.log('🔍 P2P Connection skipped - missing params:', { roomCode, userId, nickname })
       return
     }
 
-    console.log('🔍 P2P Connection starting with:', { roomCode, userId, nickname })
+    // Removed for production: console.log('🔍 P2P Connection starting with:', { roomCode, userId, nickname })
 
     // Skip if already have a connection for this room
     if (connectionRef.current && currentRoomRef.current === roomCode) {
-      console.log('🔍 P2P Connection already exists for room:', roomCode)
+      // Removed for production: console.log('🔍 P2P Connection already exists for room:', roomCode)
       return
     }
 
@@ -44,11 +44,11 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
       nickname,
       getAvatarColor(nickname),
       (data) => {
-        console.log('🔍 P2P Message received:', data)
+        // Removed for production: console.log('🔍 P2P Message received:', data)
         
         // Handle user-joined messages to store peer nickname info
         if (data.type === 'user-joined') {
-          console.log('🔍 Received user-joined:', data)
+          // Removed for production: console.log('🔍 Received user-joined:', data)
           setPeerInfo(prev => new Map(prev).set(data.userId, {
             nickname: data.nickname,
             avatarColor: data.avatarColor
@@ -57,7 +57,7 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
         
         // Handle user-info messages (response to user-joined)
         if (data.type === 'user-info') {
-          console.log('🔍 Received user-info:', data)
+          // Removed for production: console.log('🔍 Received user-info:', data)
           setPeerInfo(prev => new Map(prev).set(data.userId, {
             nickname: data.nickname,
             avatarColor: data.avatarColor
@@ -66,7 +66,7 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
         
         // Handle request-info messages
         if (data.type === 'request-info') {
-          console.log('🔍 Received request-info from:', data.from)
+          // Removed for production: console.log('🔍 Received request-info from:', data.from)
           // Send our info back to the requesting peer
           connection.sendTo(data.from, {
             type: 'user-info',
@@ -81,12 +81,12 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
         }
       },
       (peer) => {
-        console.log('🔍 Peer joined:', peer)
-        console.log('🔍 Total peers after join:', connection.getPeers().length + 1)
+        // Removed for production: console.log('🔍 Peer joined:', peer)
+        // Removed for production: console.log('🔍 Total peers after join:', connection.getPeers().length + 1)
         setPeers(prev => [...prev, peer])
       },
       (peerId) => {
-        console.log('🔍 Peer left:', peerId)
+        // Removed for production: console.log('🔍 Peer left:', peerId)
         setPeers(prev => prev.filter(p => p.id !== peerId))
         // Remove peer info when they leave
         setPeerInfo(prev => {
@@ -108,11 +108,11 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
         setIsConnected(true)
         setConnectionState('connected')
         setPeers(connection.getPeers())
-        console.log('🔍 P2P Connection established successfully')
+        // Removed for production: console.log('🔍 P2P Connection established successfully')
 
         // Broadcast our presence to all peers
-        console.log('🔍 Broadcasting user-joined to all peers')
-        console.log('🔍 Current peers count:', connection.getPeers().length)
+        // Removed for production: console.log('🔍 Broadcasting user-joined to all peers')
+        // Removed for production: console.log('🔍 Current peers count:', connection.getPeers().length)
         // Wait for data channels to be ready
         setTimeout(() => {
           connection.broadcast({
@@ -123,7 +123,7 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
           })
         }, 2000) // Wait 2 seconds for channels to establish
       } catch (error) {
-        console.error('Failed to connect:', error)
+        // Removed for production: console.error('Failed to connect:', error)
         setConnectionState('disconnected')
         setIsConnected(false)
       }
@@ -162,10 +162,10 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
   // Broadcast user info when connection establishes
   useEffect(() => {
     if (isConnected && nickname && connectionRef.current) {
-      console.log('🔍 Broadcasting user-joined on connection:', { userId, nickname })
+      // Removed for production: console.log('🔍 Broadcasting user-joined on connection:', { userId, nickname })
       // Wait longer for data channels to be ready
       const timer = setTimeout(() => {
-        console.log('📤 Broadcasting user-joined (delayed)')
+        // Removed for production: console.log('📤 Broadcasting user-joined (delayed)')
         // Broadcast our info to all existing peers
         connectionRef.current!.broadcast({
           type: 'user-joined',
@@ -184,32 +184,23 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
     if (!connectionRef.current) return
     // Simulate subscription pattern if onMessage is not a real event emitter
     const handler = (data: any) => {
-      console.log('🎯 Hook received message:', data.type, data)
+      // Removed for production: console.log('🎯 Hook received message:', data.type, data)
       switch (data.type) {
         case 'user-joined':
-          console.log('👤 Processing user-joined:', {
-            fromUser: data.userId,
-            nickname: data.nickname,
-            avatarColor: data.avatarColor,
-            currentPeerInfo: Array.from(peerInfoRef.current.entries())
-          })
+          // Removed for production: console.log('👤 Processing user-joined:', {
           peerInfoRef.current.set(data.userId, {
             nickname: data.nickname,
             avatarColor: data.avatarColor
           })
-          console.log('👤 Updated peerInfo:', Array.from(peerInfoRef.current.entries()))
+          // Removed for production: console.log('👤 Updated peerInfo:', Array.from(peerInfoRef.current.entries()))
           break
         case 'user-info':
-          console.log('📋 Processing user-info:', {
-            fromUser: data.userId,
-            nickname: data.nickname,
-            avatarColor: data.avatarColor
-          })
+          // Removed for production: console.log('📋 Processing user-info:', {
           peerInfoRef.current.set(data.userId, {
             nickname: data.nickname,
             avatarColor: data.avatarColor
           })
-          console.log('📋 Updated peerInfo after user-info:', Array.from(peerInfoRef.current.entries()))
+          // Removed for production: console.log('📋 Updated peerInfo after user-info:', Array.from(peerInfoRef.current.entries()))
           break
       }
     }
@@ -225,33 +216,19 @@ export function useP2PConnection(roomCode: string | null, userId: string, nickna
   }, [connectionRef.current])
 
   const broadcast = useCallback((data: any) => {
-    console.log('🔗 Broadcast function called:', {
-      type: data.type,
-      connectionExists: !!connectionRef.current,
-      totalPeers: connectionRef.current?.getPeers().length || 0,
-      timestamp: new Date().toISOString()
-    })
+    // Removed for production: console.log('🔗 Broadcast function called:', {
     connectionRef.current?.broadcast(data)
   }, [])
 
   const sendTo = useCallback((peerId: string, data: any) => {
-    console.log('🔗 SendTo function called:', {
-      peerId,
-      type: data.type,
-      connectionExists: !!connectionRef.current,
-      timestamp: new Date().toISOString()
-    })
+    // Removed for production: console.log('🔗 SendTo function called:', {
     connectionRef.current?.sendTo(peerId, data)
   }, [])
 
   // Enhance peers with nickname info before returning
   const enhancedPeers = peers.map(peer => {
     const info = peerInfoRef.current.get(peer.userId)
-    console.log('🔄 Enhancing peer:', {
-      userId: peer.userId,
-      hasInfo: !!info,
-      nickname: info?.nickname || 'Anonymous User'
-    })
+    // Removed for production: console.log('🔄 Enhancing peer:', {
     return {
       ...peer,
       nickname: info?.nickname || 'Anonymous User',

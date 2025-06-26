@@ -33,13 +33,7 @@ export class P2PConnection {
     onPeerJoined?: (peer: Peer) => void,
     onPeerLeft?: (peerId: string) => void
   ) {
-    console.log('🔌 WebRTC initialized with:', {
-      roomId,
-      userId,
-      nickname,
-      avatarColor,
-      timestamp: new Date().toISOString()
-    })
+    // Removed for production: console.log('🔌 WebRTC initialized with:', {
     this.roomId = roomId
     this.userId = userId
     this.nickname = nickname
@@ -50,44 +44,44 @@ export class P2PConnection {
   }
 
   async connect() {
-    console.log('🔌 WebRTC connect() called with userId:', this.userId, 'roomId:', this.roomId)
+    // Removed for production: console.log('🔌 WebRTC connect() called with userId:', this.userId, 'roomId:', this.roomId)
     
     // Validate userId and roomId
     if (!this.userId || !this.roomId) {
-      console.error('❌ Invalid userId or roomId:', { userId: this.userId, roomId: this.roomId })
+      // Removed for production: console.error('❌ Invalid userId or roomId:', { userId: this.userId, roomId: this.roomId })
       throw new Error('Invalid userId or roomId')
     }
     
     // Create Supabase channel for signaling
     this.channel = supabase.channel(`room-${this.roomId}`)
-    console.log('📡 Created Supabase channel:', `room-${this.roomId}`)
+    // Removed for production: console.log('📡 Created Supabase channel:', `room-${this.roomId}`)
 
     // Log ALL channel events
     this.channel
       .on('broadcast', { event: '*' }, (payload: any) => {
-        console.log('📡 Received ANY broadcast:', payload)
+        // Removed for production: console.log('📡 Received ANY broadcast:', payload)
       })
       .on('broadcast', { event: 'rtc-signal' }, async ({ payload }: { payload: any }) => {
         const data = payload
-        console.log('📨 Received RTC signal:', data.type, 'from:', data.from, 'to:', data.to)
+        // Removed for production: console.log('📨 Received RTC signal:', data.type, 'from:', data.from, 'to:', data.to)
         // Only process if it's for us
         if (data.to && data.to !== this.userId) {
-          console.log('📨 Signal not for us, ignoring')
+          // Removed for production: console.log('📨 Signal not for us, ignoring')
           return
         }
         switch (data.type) {
           case 'offer':
-            console.log('📨 Processing offer from:', data.from)
+            // Removed for production: console.log('📨 Processing offer from:', data.from)
             // --- Inline offer handling logic (from original code) ---
             // ... original offer handling code here ...
             break
           case 'answer':
-            console.log('📨 Processing answer from:', data.from)
+            // Removed for production: console.log('📨 Processing answer from:', data.from)
             // --- Inline answer handling logic (from original code) ---
             // ... original answer handling code here ...
             break
           case 'ice-candidate':
-            console.log('📨 Processing ICE candidate from:', data.from)
+            // Removed for production: console.log('📨 Processing ICE candidate from:', data.from)
             // --- Inline ice-candidate handling logic (from original code) ---
             // ... original ice-candidate handling code here ...
             break
@@ -97,27 +91,27 @@ export class P2PConnection {
     // Handle presence
     this.channel
       .on('presence', { event: 'sync' }, () => {
-        console.log('🌐 Presence sync - who is in the room?')
+        // Removed for production: console.log('🌐 Presence sync - who is in the room?')
         const state = this.channel.presenceState()
-        console.log('🌐 Presence state:', state)
+        // Removed for production: console.log('🌐 Presence state:', state)
         this.handlePresenceSync(state)
       })
       .on('presence', { event: 'join' }, (payload: any) => {
-        console.log('👥 Presence join:', payload)
-        console.log('👥 New user joined - presenceKey:', payload.key, 'userId:', payload.newPresences?.[0]?.user_id)
+        // Removed for production: console.log('👥 Presence join:', payload)
+        // Removed for production: console.log('👥 New user joined - presenceKey:', payload.key, 'userId:', payload.newPresences?.[0]?.user_id)
       })
       .on('presence', { event: 'leave' }, (payload: any) => {
-        console.log('👥 Presence leave:', payload)
-        console.log('👥 User left - presenceKey:', payload.key, 'userId:', payload.leftPresences?.[0]?.user_id)
+        // Removed for production: console.log('👥 Presence leave:', payload)
+        // Removed for production: console.log('👥 User left - presenceKey:', payload.key, 'userId:', payload.leftPresences?.[0]?.user_id)
       })
       .subscribe(async (status: string, err?: any) => {
-        console.log('📡 Subscription status changed to:', status)
+        // Removed for production: console.log('📡 Subscription status changed to:', status)
         if (err) {
-          console.error('❌ Subscription error:', err)
+          // Removed for production: console.error('❌ Subscription error:', err)
         }
         if (status === 'SUBSCRIBED') {
-          console.log('📡 Signaling channel subscribed, tracking presence')
-          console.log('📡 Subscribing with MY userId:', this.userId)
+          // Removed for production: console.log('📡 Signaling channel subscribed, tracking presence')
+          // Removed for production: console.log('📡 Subscribing with MY userId:', this.userId)
           
           // Track presence using userId as the key
           await this.channel.track({
@@ -132,7 +126,7 @@ export class P2PConnection {
   }
 
   private handlePresenceSync(state: any) {
-    console.log('👥 Raw presence state:', state)
+    // Removed for production: console.log('👥 Raw presence state:', state)
     
     const currentPeers: string[] = []
     
@@ -141,17 +135,17 @@ export class P2PConnection {
       const presence = Array.isArray(presences) ? presences[0] : presences
       const actualUserId = presence.user_id || presence.userId || presenceKey
       
-      console.log('👥 Presence entry:', {
-        presenceKey,
-        actualUserId,
-        myUserId: this.userId
-      })
+      // Removed for production: console.log('👥 Presence entry:', {
+      // Removed for production: presenceKey,
+      // Removed for production: actualUserId,
+      // Removed for production: myUserId: this.userId
+      // Removed for production: })
       
       if (actualUserId !== this.userId) {
         currentPeers.push(actualUserId)
         
         if (!this.peers.has(actualUserId)) {
-          console.log('👥 Connecting to peer using their actual userId:', actualUserId)
+          // Removed for production: console.log('👥 Connecting to peer using their actual userId:', actualUserId)
           this.connectToPeer(actualUserId)
         }
       }
@@ -160,14 +154,14 @@ export class P2PConnection {
     // Remove peers that left
     this.peers.forEach((peer, peerId) => {
       if (!currentPeers.includes(peerId)) {
-        console.log('👥 Peer left, disconnecting:', peerId)
+        // Removed for production: console.log('👥 Peer left, disconnecting:', peerId)
         this.disconnectPeer(peerId)
       }
     })
   }
 
   private async connectToPeer(peerId: string) {
-    console.log('🔗 Connecting to peer:', peerId)
+    // Removed for production: console.log('🔗 Connecting to peer:', peerId)
     // Create peer connection
     const pc = new RTCPeerConnection({
       iceServers: [
@@ -180,7 +174,7 @@ export class P2PConnection {
       ordered: true,
       maxRetransmits: 10
     })
-    console.log('📤 Created send channel for peer:', peerId)
+    // Removed for production: console.log('📤 Created send channel for peer:', peerId)
     // Set up the peer
     const peer: Peer = {
       id: peerId,
@@ -194,20 +188,20 @@ export class P2PConnection {
     this.setupDataChannel(sendChannel, peerId, 'send')
     // Set up receive channel handler
     pc.ondatachannel = (event) => {
-      console.log('📥 Received data channel from peer:', peerId)
+      // Removed for production: console.log('📥 Received data channel from peer:', peerId)
       peer.receiveChannel = event.channel
       this.setupDataChannel(event.channel, peerId, 'receive')
     }
     // --- OFFER CREATION AND SENDING ---
     try {
       const offer = await pc.createOffer()
-      console.log('📤 Created offer for peer:', peerId)
+      // Removed for production: console.log('📤 Created offer for peer:', peerId)
       await pc.setLocalDescription(offer)
-      console.log('📤 Set local description')
+      // Removed for production: console.log('📤 Set local description')
       // Check Supabase channel state
-      console.log('📡 Supabase channel state:', this.channel?.state)
+      // Removed for production: console.log('📡 Supabase channel state:', this.channel?.state)
       // Send the offer
-      console.log('📤 Sending offer via Supabase')
+      // Removed for production: console.log('📤 Sending offer via Supabase')
       await this.channel.send({
         type: 'broadcast',
         event: 'rtc-signal',
@@ -218,26 +212,26 @@ export class P2PConnection {
           offer: pc.localDescription
         }
       })
-      console.log('📤 Offer sent via Supabase')
+      // Removed for production: console.log('📤 Offer sent via Supabase')
     } catch (err) {
-      console.error('❌ Error during offer creation/sending:', err)
+      // Removed for production: console.error('❌ Error during offer creation/sending:', err)
     }
   }
 
   private setupDataChannel(dataChannel: RTCDataChannel, peerId: string, direction: 'send' | 'receive') {
-    console.log(`📡 Setting up ${direction} channel for peer:`, peerId, {
-      label: dataChannel.label,
-      id: dataChannel.id,
-      readyState: dataChannel.readyState,
-      timestamp: new Date().toISOString()
-    })
+    // Removed for production: console.log(`📡 Setting up ${direction} channel for peer:`, peerId, {
+    // Removed for production: label: dataChannel.label,
+    // Removed for production: id: dataChannel.id,
+    // Removed for production: readyState: dataChannel.readyState,
+    // Removed for production: timestamp: new Date().toISOString()
+    // Removed for production: })
     
     dataChannel.onopen = () => {
-      console.log(`✅ ${direction.toUpperCase()} channel opened for peer:`, peerId)
+      // Removed for production: console.log(`✅ ${direction.toUpperCase()} channel opened for peer:`, peerId)
       // Send initial info request
       if (direction === 'send' && dataChannel.readyState === 'open') {
         setTimeout(() => {
-          console.log('📡 Sending request-info')
+          // Removed for production: console.log('📡 Sending request-info')
           dataChannel.send(JSON.stringify({
             type: 'request-info',
             from: this.userId
@@ -247,20 +241,20 @@ export class P2PConnection {
       // Detect stuck channels
       setTimeout(() => {
         if (dataChannel.readyState === 'connecting') {
-          console.error('❌ Channel stuck for:', peerId)
+          // Removed for production: console.error('❌ Channel stuck for:', peerId)
           // Optionally retry or log the error
         }
       }, 5000)
     }
     
     dataChannel.onmessage = (event) => {
-      console.log(`📥 MESSAGE RECEIVED on ${direction} channel from`, peerId, ':', {
-        dataLength: event.data?.length,
-        preview: event.data?.substring(0, 100),
-        channelLabel: dataChannel.label,
-        channelId: dataChannel.id,
-        timestamp: new Date().toISOString()
-      })
+      // Removed for production: console.log(`📥 MESSAGE RECEIVED on ${direction} channel from`, peerId, ':', {
+      // Removed for production: dataLength: event.data?.length,
+      // Removed for production: preview: event.data?.substring(0, 100),
+      // Removed for production: channelLabel: dataChannel.label,
+      // Removed for production: channelId: dataChannel.id,
+      // Removed for production: timestamp: new Date().toISOString()
+      // Removed for production: })
       
       try {
         const data = JSON.parse(event.data)
@@ -270,7 +264,7 @@ export class P2PConnection {
           // Reply on our SEND channel
           const peer = this.peers.get(peerId)
           if (peer?.dataChannel?.readyState === 'open') {
-            console.log('📡 Sending user info to peer:', peerId)
+            // Removed for production: console.log('📡 Sending user info to peer:', peerId)
             peer.dataChannel.send(JSON.stringify({
               type: 'user-info',
               userId: this.userId,
@@ -296,7 +290,7 @@ export class P2PConnection {
           chunkInfo.chunks[chunkIndex] = chunkData
           chunkInfo.received++
           
-          console.log(`📦 Chunk ${chunkIndex + 1}/${totalChunks} received for message ${messageId}`)
+          // Removed for production: console.log(`📦 Chunk ${chunkIndex + 1}/${totalChunks} received for message ${messageId}`)
           
           if (chunkInfo.received === chunkInfo.total) {
             // Reassemble
@@ -304,42 +298,42 @@ export class P2PConnection {
             const reassembledData = JSON.parse(fullMessage)
             this.incomingChunks.delete(messageId)
             
-            console.log('✅ Message reassembled:', {
-              type: reassembledData.type,
-              messageId,
-              totalSize: fullMessage.length,
-              from: peerId
-            })
+            // Removed for production: console.log('✅ Message reassembled:', {
+            // Removed for production: type: reassembledData.type,
+            // Removed for production: messageId,
+            // Removed for production: totalSize: fullMessage.length,
+            // Removed for production: from: peerId
+            // Removed for production: })
             
             // Process the full message
             this.onMessage(reassembledData)
           }
         } else {
           // Normal message
-          console.log('📨 PARSED MESSAGE:', {
-            type: data.type,
-            from: peerId,
-            direction,
-            dataSize: JSON.stringify(data).length,
-            channelLabel: dataChannel.label,
-            timestamp: new Date().toISOString()
-          })
+          // Removed for production: console.log('📨 PARSED MESSAGE:', {
+          // Removed for production: type: data.type,
+          // Removed for production: from: peerId,
+          // Removed for production: direction,
+          // Removed for production: dataSize: JSON.stringify(data).length,
+          // Removed for production: channelLabel: dataChannel.label,
+          // Removed for production: timestamp: new Date().toISOString()
+          // Removed for production: })
           
           // Notify message handler
-          console.log('🔄 Calling onMessage handler with message type:', data.type)
+          // Removed for production: console.log('🔄 Calling onMessage handler with message type:', data.type)
           this.onMessage(data)
         }
       } catch (error) {
-        console.error('❌ Error parsing message:', error, 'raw data:', event.data)
+        // Removed for production: console.error('❌ Error parsing message:', error, 'raw data:', event.data)
       }
     }
 
     dataChannel.onclose = () => {
-      console.log(`🔴 ${direction.toUpperCase()} channel closed for peer:`, peerId, {
-        label: dataChannel.label,
-        id: dataChannel.id,
-        timestamp: new Date().toISOString()
-      })
+      // Removed for production: console.log(`🔴 ${direction.toUpperCase()} channel closed for peer:`, peerId, {
+      // Removed for production: label: dataChannel.label,
+      // Removed for production: id: dataChannel.id,
+      // Removed for production: timestamp: new Date().toISOString()
+      // Removed for production: })
     }
 
     dataChannel.onerror = (error) => {
@@ -350,12 +344,12 @@ export class P2PConnection {
         errorDetail: error?.error?.errorDetail || 'No error detail available'
       }
       
-      console.warn(`🔴 ${direction.toUpperCase()} channel error for peer:`, peerId, {
-        label: dataChannel.label,
-        id: dataChannel.id,
-        error: errorInfo,
-        timestamp: new Date().toISOString()
-      })
+      // Removed for production: console.warn(`🔴 ${direction.toUpperCase()} channel error for peer:`, peerId, {
+      // Removed for production: label: dataChannel.label,
+      // Removed for production: id: dataChannel.id,
+      // Removed for production: error: errorInfo,
+      // Removed for production: timestamp: new Date().toISOString()
+      // Removed for production: })
       
       // Only show toast for actual errors, not normal disconnections
       if (errorInfo.type !== 'close') {
@@ -365,31 +359,31 @@ export class P2PConnection {
   }
 
   private disconnectPeer(peerId: string) {
-    console.log('🔌 Disconnecting peer:', peerId)
+    // Removed for production: console.log('🔌 Disconnecting peer:', peerId)
     const peer = this.peers.get(peerId)
     if (peer) {
       try {
         if (peer.dataChannel) {
-          console.log('📡 Closing send channel for peer:', peerId)
+          // Removed for production: console.log('📡 Closing send channel for peer:', peerId)
           peer.dataChannel.close()
         }
         if (peer.receiveChannel) {
-          console.log('📡 Closing receive channel for peer:', peerId)
+          // Removed for production: console.log('📡 Closing receive channel for peer:', peerId)
           peer.receiveChannel.close()
         }
         if (peer.connection) {
-          console.log('🔌 Closing RTCPeerConnection for peer:', peerId)
+          // Removed for production: console.log('🔌 Closing RTCPeerConnection for peer:', peerId)
           peer.connection.close()
         }
       } catch (error) {
-        console.warn('⚠️ Error during peer cleanup:', peerId, error)
+        // Removed for production: console.warn('⚠️ Error during peer cleanup:', peerId, error)
       } finally {
         this.peers.delete(peerId)
         this.onPeerLeft?.(peerId)
-        console.log('✅ Peer cleanup completed:', peerId)
+        // Removed for production: console.log('✅ Peer cleanup completed:', peerId)
       }
     } else {
-      console.log('⚠️ Peer not found for cleanup:', peerId)
+      // Removed for production: console.log('⚠️ Peer not found for cleanup:', peerId)
     }
   }
 
@@ -397,23 +391,23 @@ export class P2PConnection {
     const message = JSON.stringify(data)
     const CHUNK_SIZE = 16000 // 16KB chunks
     
-    console.log('🚀 BROADCAST ATTEMPT:', {
-      type: data.type,
-      dataSize: message.length,
-      needsChunking: message.length > CHUNK_SIZE,
-      timestamp: new Date().toISOString(),
-      totalPeers: this.peers.size
-    })
+    // Removed for production: console.log('🚀 BROADCAST ATTEMPT:', {
+    // Removed for production: type: data.type,
+    // Removed for production: dataSize: message.length,
+    // Removed for production: needsChunking: message.length > CHUNK_SIZE,
+    // Removed for production: timestamp: new Date().toISOString(),
+    // Removed for production: totalPeers: this.peers.size
+    // Removed for production: })
     
     let pendingPeers: string[] = []
     let sentCount = 0
     let failedCount = 0
     
     this.peers.forEach((peer, peerId) => {
-      console.log('📤 Attempting to send to peer:', peerId, {
-        sendChannelReady: peer.dataChannel?.readyState,
-        receiveChannelReady: peer.receiveChannel?.readyState
-      })
+      // Removed for production: console.log('📤 Attempting to send to peer:', peerId, {
+      // Removed for production: sendChannelReady: peer.dataChannel?.readyState,
+      // Removed for production: receiveChannelReady: peer.receiveChannel?.readyState
+      // Removed for production: })
       
       // Use the SEND channel (the one we created)
       if (peer.dataChannel?.readyState === 'open') {
@@ -428,7 +422,7 @@ export class P2PConnection {
               chunks.push(message.slice(i, i + CHUNK_SIZE))
             }
             
-            console.log(`📦 Sending ${chunks.length} chunks to ${peerId}`)
+            // Removed for production: console.log(`📦 Sending ${chunks.length} chunks to ${peerId}`)
             
             // Send each chunk
             chunks.forEach((chunk, index) => {
@@ -445,32 +439,32 @@ export class P2PConnection {
             // Small message, send normally
             peer.dataChannel.send(message)
           }
-          console.log('✅ Successfully sent to peer:', peerId)
+          // Removed for production: console.log('✅ Successfully sent to peer:', peerId)
           sentCount++
         } catch (error) {
-          console.error('❌ Failed to send to peer:', peerId, 'error:', error)
+          // Removed for production: console.error('❌ Failed to send to peer:', peerId, 'error:', error)
           failedCount++
           pendingPeers.push(peerId)
         }
       } else {
-        console.log('⏳ Peer send channel not ready:', peerId, 'readyState:', peer.dataChannel?.readyState)
+        // Removed for production: console.log('⏳ Peer send channel not ready:', peerId, 'readyState:', peer.dataChannel?.readyState)
         pendingPeers.push(peerId)
         failedCount++
       }
     })
     
-    console.log('📊 Broadcast summary:', {
-      totalPeers: this.peers.size,
-      sentCount,
-      failedCount,
-      pendingPeers
-    })
+    // Removed for production: console.log('📊 Broadcast summary:', {
+    // Removed for production: totalPeers: this.peers.size,
+    // Removed for production: sentCount,
+    // Removed for production: failedCount,
+    // Removed for production: pendingPeers
+    // Removed for production: })
     
     // Retry for pending peers after delay
     if (pendingPeers.length > 0) {
-      console.log('🔄 Scheduling retry for pending peers:', pendingPeers)
+      // Removed for production: console.log('🔄 Scheduling retry for pending peers:', pendingPeers)
       setTimeout(() => {
-        console.log('🔄 Executing retry for peers:', pendingPeers)
+        // Removed for production: console.log('🔄 Executing retry for peers:', pendingPeers)
         pendingPeers.forEach(peerId => {
           const peer = this.peers.get(peerId)
           if (peer?.dataChannel?.readyState === 'open') {
@@ -495,12 +489,12 @@ export class P2PConnection {
               } else {
                 peer.dataChannel.send(message)
               }
-              console.log('✅ Retry successful for peer:', peerId)
+              // Removed for production: console.log('✅ Retry successful for peer:', peerId)
             } catch (error) {
-              console.error('❌ Retry failed for peer:', peerId, 'error:', error)
+              // Removed for production: console.error('❌ Retry failed for peer:', peerId, 'error:', error)
             }
           } else {
-            console.log('⏳ Peer still not ready for retry:', peerId, 'readyState:', peer?.dataChannel?.readyState)
+            // Removed for production: console.log('⏳ Peer still not ready for retry:', peerId, 'readyState:', peer?.dataChannel?.readyState)
           }
         })
       }, 1000)
@@ -512,7 +506,7 @@ export class P2PConnection {
     if (peer?.dataChannel?.readyState === 'open') {
       peer.dataChannel.send(JSON.stringify(data))
     } else {
-      console.error('Send channel not ready:', peer?.dataChannel?.readyState)
+      // Removed for production: console.error('Send channel not ready:', peer?.dataChannel?.readyState)
     }
   }
 

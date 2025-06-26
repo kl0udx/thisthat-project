@@ -31,7 +31,7 @@ export function RoomHeader({
   timeRemaining = 0,
   isTimerStarted = false
 }: RoomHeaderProps) {
-  console.log('Peers in RoomHeader:', JSON.stringify(peers, null, 2))
+  // Removed for production: console.log('Peers in RoomHeader:', JSON.stringify(peers, null, 2))
   return (
     <div className="h-16 border-b bg-white px-6 flex items-center justify-between">
       {/* Left side - avatars */}

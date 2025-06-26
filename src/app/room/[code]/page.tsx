@@ -61,14 +61,14 @@ export default function RoomPage({
 }: {
   params: Promise<{ code: string }>
 }) {
-  console.log('🚨 ROOM PAGE LOADED 🚨')
+  // Removed for production: console.log('🚨 ROOM PAGE LOADED 🚨')
   
   const { code } = use(params)
   const router = useRouter()
   
   // Add these debug logs right after getting the params
-  console.log('🔍 Debug - code:', code)
-  console.log('🔍 Debug - params:', params)
+  // Removed for production: console.log('🔍 Debug - code:', code)
+  // Removed for production: console.log('🔍 Debug - params:', params)
   
   // All useState hooks at the top level
   const [mounted, setMounted] = useState(false)
@@ -119,9 +119,9 @@ export default function RoomPage({
   const [roomSession, setRoomSession] = useState<RoomSession | null>(null)
   
   // Add debug log for userId after state declaration
-  console.log('🔍 Debug - userId (initial):', userId)
-  console.log('🔍 Debug - suggestedNickname:', suggestedNickname)
-  console.log('🔍 Debug - current nickname:', nickname)
+  // Removed for production: console.log('🔍 Debug - userId (initial):', userId)
+  // Removed for production: console.log('🔍 Debug - suggestedNickname:', suggestedNickname)
+  // Removed for production: console.log('🔍 Debug - current nickname:', nickname)
   
   // Always call useP2PConnection, but pass null when we shouldn't connect
   const { isConnected, peers, connectionState, broadcast, sendTo, connection } = useP2PConnection(
@@ -208,20 +208,20 @@ export default function RoomPage({
     setMounted(true)
     
     if (typeof window !== 'undefined') {
-      console.log('🔍 Checking localStorage for nickname...')
+      // Removed for production: console.log('🔍 Checking localStorage for nickname...')
       const savedNickname = localStorage.getItem('nickname')
       const savedAvatarColor = localStorage.getItem('avatarColor')
-      console.log('🔍 Found saved nickname:', savedNickname)
-      console.log('🔍 Found saved avatar color:', savedAvatarColor)
+      // Removed for production: console.log('🔍 Found saved nickname:', savedNickname)
+      // Removed for production: console.log('🔍 Found saved avatar color:', savedAvatarColor)
       
       if (savedNickname && savedAvatarColor) {
-        console.log('🔍 Loading saved nickname:', savedNickname)
+        // Removed for production: console.log('🔍 Loading saved nickname:', savedNickname)
         setNickname(savedNickname)
         setAvatarColor(savedAvatarColor)
         setShowNicknameModal(false)
-        console.log('🔍 Nickname loaded, modal hidden')
+        // Removed for production: console.log('🔍 Nickname loaded, modal hidden')
       } else {
-        console.log('🔍 No saved nickname found, will show modal')
+        // Removed for production: console.log('🔍 No saved nickname found, will show modal')
         // Generate new avatar color for new users
         setAvatarColor(generateRandomAvatarColor())
       }
@@ -233,15 +233,15 @@ export default function RoomPage({
     if (!connection) return
 
     const unsubscribe = connection.onMessage((data: any) => {
-      console.log('🔍 Received message:', data)
+      // Removed for production: console.log('🔍 Received message:', data)
       
       switch (data.type) {
         case 'user-joined':
-          console.log('🔍 Received user-joined from:', data.userId, data.nickname)
+          // Removed for production: console.log('🔍 Received user-joined from:', data.userId, data.nickname)
           
           // If this is someone else joining, send our info back to them
           if (data.userId !== userId) {
-            console.log('🔍 Sending my info back to new user')
+            // Removed for production: console.log('🔍 Sending my info back to new user')
             // Send our nickname to the specific new user
             sendTo(data.userId, {
               type: 'user-info',
@@ -253,12 +253,12 @@ export default function RoomPage({
           break
           
         case 'user-info':
-          console.log('🔍 Received user-info:', data)
+          // Removed for production: console.log('🔍 Received user-info:', data)
           // This will be handled by the enhanced peers in use-p2p-connection
           break
           
         case 'request-info':
-          console.log('🔍 Received request-info from:', data.from)
+          // Removed for production: console.log('🔍 Received request-info from:', data.from)
           // Send our info back to the requesting peer
           sendTo(data.from, {
             type: 'user-info',
@@ -269,16 +269,16 @@ export default function RoomPage({
           break
           
         case 'test-message':
-          console.log('🧪 Test message received:', data.text)
+          // Removed for production: console.log('🧪 Test message received:', data.text)
           alert('Received: ' + data.text)
           break
           
         case 'canvas-add':
-          console.log('Received shape from peer:', data.shape)
+          // Removed for production: console.log('Received shape from peer:', data.shape)
           break
           
         case 'chat-message':
-          console.log('Received message:', data.message)
+          // Removed for production: console.log('Received message:', data.message)
           break
           
         case 'provider-added':
@@ -290,83 +290,83 @@ export default function RoomPage({
           break
           
         case 'canvas-object-add':
-          console.log('📦 Remote add received:', {
-            objectId: data.object?.id,
-            objectType: data.object?.type,
-            objectSize: JSON.stringify(data.object).length,
-            currentCanvasObjectsCount: canvasObjects.length
-          })
+          // Removed for production: console.log('📦 Remote add received:', {
+          //   objectId: data.object?.id,
+          //   objectType: data.object?.type,
+          //   objectSize: JSON.stringify(data.object).length,
+          //   currentCanvasObjectsCount: canvasObjects.length
+          // })
           setCanvasObjects(prev => {
             const newState = [...prev, data.object]
-            console.log('📦 Canvas objects updated:', {
-              previousCount: prev.length,
-              newCount: newState.length,
-              addedObject: data.object
-            })
+            // Removed for production: console.log('📦 Canvas objects updated:', {
+            //   previousCount: prev.length,
+            //   newCount: newState.length,
+            //   addedObject: data.object
+            // })
             return newState
           })
           break
           
         case 'canvas-object-move':
-          console.log('📦 Remote move received:', {
-            objectId: data.objectId,
-            newPosition: data.position,
-            currentCanvasObjectsCount: canvasObjects.length
-          })
+          // Removed for production: console.log('📦 Remote move received:', {
+          //   objectId: data.objectId,
+          //   newPosition: data.position,
+          //   currentCanvasObjectsCount: canvasObjects.length
+          // })
           setCanvasObjects(prev => {
             const newState = prev.map(obj => 
               obj.id === data.objectId 
                 ? { ...obj, position: data.position } 
                 : obj
             )
-            console.log('📦 Canvas objects updated for move:', {
-              previousCount: prev.length,
-              newCount: newState.length,
-              movedObject: data.objectId
-            })
+            // Removed for production: console.log('📦 Canvas objects updated for move:', {
+            //   previousCount: prev.length,
+            //   newCount: newState.length,
+            //   movedObject: data.objectId
+            // })
             return newState
           })
           break
           
         case 'canvas-object-remove':
-          console.log('📦 Remote remove received:', {
-            objectId: data.objectId,
-            currentCanvasObjectsCount: canvasObjects.length
-          })
+          // Removed for production: console.log('📦 Remote remove received:', {
+          //   objectId: data.objectId,
+          //   currentCanvasObjectsCount: canvasObjects.length
+          // })
           setCanvasObjects(prev => {
             const newState = prev.filter(obj => obj.id !== data.objectId)
-            console.log('📦 Canvas objects updated for remove:', {
-              previousCount: prev.length,
-              newCount: newState.length,
-              removedObject: data.objectId
-            })
+            // Removed for production: console.log('📦 Canvas objects updated for remove:', {
+            //   previousCount: prev.length,
+            //   newCount: newState.length,
+            //   removedObject: data.objectId
+            // })
             return newState
           })
           break
           
         case 'canvas-object-resize':
-          console.log('📦 Remote resize received:', {
-            objectId: data.objectId,
-            newSize: data.size,
-            currentCanvasObjectsCount: canvasObjects.length
-          })
+          // Removed for production: console.log('📦 Remote resize received:', {
+          //   objectId: data.objectId,
+          //   newSize: data.size,
+          //   currentCanvasObjectsCount: canvasObjects.length
+          // })
           setCanvasObjects(prev => {
             const newState = prev.map(obj => 
               obj.id === data.objectId 
                 ? { ...obj, size: data.size } 
                 : obj
             )
-            console.log('📦 Canvas objects updated for resize:', {
-              previousCount: prev.length,
-              newCount: newState.length,
-              resizedObject: data.objectId
-            })
+            // Removed for production: console.log('📦 Canvas objects updated for resize:', {
+            //   previousCount: prev.length,
+            //   newCount: newState.length,
+            //   resizedObject: data.objectId
+            // })
             return newState
           })
           break
           
         case 'request-artifact':
-          console.log('📦 Artifact requested:', data.artifactId)
+          // Removed for production: console.log('📦 Artifact requested:', data.artifactId)
           const requestedArtifact = artifactStore.getArtifact(data.artifactId)
           
           if (requestedArtifact) {
@@ -378,7 +378,7 @@ export default function RoomPage({
           break
 
         case 'artifact-content':
-          console.log('📦 Received artifact content:', data.artifact.id)
+          // Removed for production: console.log('📦 Received artifact content:', data.artifact.id)
           artifactStore.addArtifact(data.artifact)
           
           // Force re-render of canvas objects
@@ -388,7 +388,7 @@ export default function RoomPage({
         case 'ai-response':
           // REMOVED: Let Supabase subscription handle AI responses instead of WebRTC
           // This prevents double-adding of AI response cards
-          console.log('🤖 AI response received via WebRTC - skipping to prevent duplicates')
+          // Removed for production: console.log('🤖 AI response received via WebRTC - skipping to prevent duplicates')
           break
           
         // case 'timer-started':
@@ -448,7 +448,7 @@ export default function RoomPage({
   // Add effect to broadcast nickname when connection is established
   useEffect(() => {
     if (isConnected && nickname) {
-      console.log('🔍 Broadcasting my nickname to all peers:', nickname)
+      // Removed for production: console.log('🔍 Broadcasting my nickname to all peers:', nickname)
       // Delay slightly to ensure connections are ready
       setTimeout(() => {
         broadcast({
@@ -491,26 +491,24 @@ export default function RoomPage({
     }
   }, [])
 
-  // Add room session creation effect
+  // Initialize room session when code and userId are available
   useEffect(() => {
-    console.log('🔍 Room Session Debug - Starting')
-    console.log('🔍 Room code:', code)
-    console.log('🔍 User ID:', userId)
+    // Removed for production: console.log('🔄 useEffect triggered - code:', code, 'userId:', userId)
     
     const initRoomSession = async () => {
       try {
-        console.log('🔍 Debug: Attempting to get room session')
-        console.log('📌 Room code:', code)
-        console.log('👤 User ID:', userId)
+        // Removed for production: console.log('🔍 Debug: Attempting to get room session')
+        // Removed for production: console.log('📌 Room code:', code)
+        // Removed for production: console.log('👤 User ID:', userId)
         
         const { data: existingSession, error: getError } = await getRoomSession(code)
         
-        console.log('📊 getRoomSession response:', { 
-          data: existingSession, 
-          error: getError,
-          errorMessage: getError?.message,
-          errorCode: getError?.code 
-        })
+        // Removed for production: console.log('📊 getRoomSession response:', { 
+        //   data: existingSession, 
+        //   error: getError,
+        //   errorMessage: getError?.message,
+        //   errorCode: getError?.code 
+        // })
         
         if (getError) {
           console.error('❌ Supabase error getting room session:', getError)
@@ -524,19 +522,19 @@ export default function RoomPage({
         }
         
         if (existingSession) {
-          console.log('✅ Room session already exists:', existingSession)
+          // Removed for production: console.log('✅ Room session already exists:', existingSession)
           setRoomSession(existingSession)
           setTimeRemaining(existingSession.time_remaining_seconds || 0)
           setIsTimerStarted(!!existingSession.timer_started_at)
         } else {
-          console.log('🆕 No existing session, creating new room session...')
+          // Removed for production: console.log('🆕 No existing session, creating new room session...')
           const { data, error } = await createRoomSession(code, userId!)
           
-          console.log('✅ createRoomSession response:', { 
-            data, 
-            error,
-            errorMessage: error?.message 
-          })
+          // Removed for production: console.log('✅ createRoomSession response:', { 
+          //   data, 
+          //   error,
+          //   errorMessage: error?.message 
+          // })
           
           if (error) {
             console.error('❌ Error creating room session:', error)
@@ -544,7 +542,7 @@ export default function RoomPage({
           }
           
           if (data) {
-            console.log('✅ Room session created successfully:', data)
+            // Removed for production: console.log('✅ Room session created successfully:', data)
             setRoomSession(data)
             setTimeRemaining(0)
             setIsTimerStarted(false)
@@ -558,7 +556,7 @@ export default function RoomPage({
     if (code && userId) {
       initRoomSession()
     } else {
-      console.log('⏳ Waiting for code and userId')
+      // Removed for production: console.log('⏳ Waiting for code and userId')
     }
   }, [code, userId])
 
@@ -566,11 +564,11 @@ export default function RoomPage({
   useEffect(() => {
     if (!code || !roomSession) return
     
-    console.log('📡 Subscribing to room session updates')
+    // Removed for production: console.log('📡 Subscribing to room session updates')
     
     const channel = subscribeToRoomSession(code, (updatedSession) => {
       if (updatedSession) {
-        console.log('🔄 Room session updated')
+        // Removed for production: console.log('🔄 Room session updated')
         
         // Update room session
         setRoomSession(updatedSession)
@@ -585,12 +583,12 @@ export default function RoomPage({
           
           // If we're the host and actively counting down, keep our local time
           if (isHost && timerRunning && Math.abs(prev - updatedSession.time_remaining_seconds) < 15) {
-            console.log('🎯 Host keeping local countdown:', prev)
+            // Removed for production: console.log('🎯 Host keeping local countdown:', prev)
             return prev // Keep smooth countdown
           }
           
           // Otherwise use the update
-          console.log('🔄 Updating timer from subscription:', updatedSession.time_remaining_seconds)
+          // Removed for production: console.log('🔄 Updating timer from subscription:', updatedSession.time_remaining_seconds)
           return updatedSession.time_remaining_seconds || 0
         })
         
@@ -604,7 +602,7 @@ export default function RoomPage({
     })
     
     return () => {
-      console.log('🔌 Unsubscribing from room session')
+      // Removed for production: console.log('🔌 Unsubscribing from room session')
       channel.unsubscribe()
     }
   }, [code, roomSession?.room_code]) // Keep original dependencies only
@@ -617,22 +615,22 @@ export default function RoomPage({
     // - User is the host
     // - Room session exists
     if (!isTimerStarted || timeRemaining <= 0 || !roomSession || !userId) {
-      console.log('⏰ Timer countdown skipped:', {
-        isTimerStarted,
-        timeRemaining,
-        hasRoomSession: !!roomSession,
-        hasUserId: !!userId
-      })
+      // Removed for production: console.log('⏰ Timer countdown skipped:', {
+      //   isTimerStarted,
+      //   timeRemaining,
+      //   hasRoomSession: !!roomSession,
+      //   hasUserId: !!userId
+      // })
       return
     }
     
     const isHost = roomSession.host_user_id === userId
     if (!isHost) {
-      console.log('⏰ Not host, skipping timer countdown')
+      // Removed for production: console.log('⏰ Not host, skipping timer countdown')
       return
     }
     
-    console.log('⏰ Starting timer countdown as host')
+    // Removed for production: console.log('⏰ Starting timer countdown as host')
     
     const interval = setInterval(() => {
       setTimeRemaining(prev => {
@@ -640,15 +638,15 @@ export default function RoomPage({
         
         // Log every 30 seconds for debugging
         if (newTime % 30 === 0) {
-          console.log('⏰ Timer update:', {
-            newTime,
-            formatted: `${Math.floor(newTime / 60)}:${(newTime % 60).toString().padStart(2, '0')}`
-          })
+          // Removed for production: console.log('⏰ Timer update:', {
+          //   newTime,
+          //   formatted: `${Math.floor(newTime / 60)}:${(newTime % 60).toString().padStart(2, '0')}`
+          // })
         }
         
         // Update Supabase every 10 seconds to reduce DB calls
         if (newTime % 10 === 0) {
-          console.log('💾 Saving timer to Supabase:', newTime)
+          // Removed for production: console.log('💾 Saving timer to Supabase:', newTime)
           updateRoomTimer(code, newTime).catch(error => {
             console.error('Error updating timer:', error)
           })
@@ -656,7 +654,7 @@ export default function RoomPage({
         
         // When timer expires, update to read-only
         if (newTime === 0 && prev !== 0) {
-          console.log('⏰ Timer expired! Setting room to read-only')
+          // Removed for production: console.log('⏰ Timer expired! Setting room to read-only')
           updateRoomTimer(code, 0).catch(error => {
             console.error('Error setting room to read-only:', error)
           })
@@ -667,7 +665,7 @@ export default function RoomPage({
     }, 1000) // Run every second
     
     return () => {
-      console.log('⏰ Stopping timer countdown')
+      // Removed for production: console.log('⏰ Stopping timer countdown')
       clearInterval(interval)
     }
   }, [isTimerStarted, timeRemaining, roomSession, userId, code])
@@ -718,10 +716,10 @@ export default function RoomPage({
     
     // Need at least 2 people to start
     if (allUsers.length >= 2) {
-      console.log('🎯 2nd person joined! Starting timer...')
+      // Removed for production: console.log('🎯 2nd person joined! Starting timer...')
       startRoomTimer(code)
         .then(() => {
-          console.log('✅ Timer started successfully')
+          // Removed for production: console.log('✅ Timer started successfully')
           toast.success('Timer started!', {
             description: 'You have 1 hour of free collaboration time'
           })
@@ -748,7 +746,7 @@ export default function RoomPage({
   useEffect(() => {
     if (!nickname || !userId) return
     
-    console.log('Setting up presence for:', nickname)
+    // Removed for production: console.log('Setting up presence for:', nickname)
     
     // Create presence channel
     const channel = createPresenceChannel(code)
@@ -757,14 +755,14 @@ export default function RoomPage({
     channel
       .on('presence', { event: 'sync' }, () => {
         const users = getOnlineUsers(channel)
-        console.log('Presence sync - online users:', users)
+        // Removed for production: console.log('Presence sync - online users:', users)
         setOnlineUsers(users)
       })
       .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        console.log('User joined:', newPresences)
+        // Removed for production: console.log('User joined:', newPresences)
       })
       .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log('User left:', leftPresences)
+        // Removed for production: console.log('User left:', leftPresences)
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -775,7 +773,7 @@ export default function RoomPage({
             avatar_color: avatarColor || '#9CA3AF',
             joined_at: new Date().toISOString()
           }
-          console.log('Tracking presence:', presenceData)
+          // Removed for production: console.log('Tracking presence:', presenceData)
           await channel.track(presenceData)
         }
       })
@@ -784,39 +782,39 @@ export default function RoomPage({
     
     // Cleanup
     return () => {
-      console.log('Cleaning up presence')
+      // Removed for production: console.log('Cleaning up presence')
       channel.unsubscribe()
     }
   }, [nickname, userId, code, avatarColor])
 
   // Handler functions
   const handleSetNickname = async (newNickname: string) => {
-    console.log('🔍 Join Room clicked')
-    console.log('🔍 Nickname:', newNickname)
-    console.log('🔍 Room code:', code)
-    console.log('🔍 Current showNicknameModal:', showNicknameModal)
-    console.log('🔍 Generated nickname for new user:', newNickname)
+    // Removed for production: console.log('🔍 Join Room clicked')
+    // Removed for production: console.log('🔍 Nickname:', newNickname)
+    // Removed for production: console.log('🔍 Room code:', code)
+    // Removed for production: console.log('🔍 Current showNicknameModal:', showNicknameModal)
+    // Removed for production: console.log('🔍 Generated nickname for new user:', newNickname)
     
     // If no avatar color yet, generate one
     const color = avatarColor || generateRandomAvatarColor()
-    console.log('🔍 Generated avatar color:', color)
+    // Removed for production: console.log('🔍 Generated avatar color:', color)
     
-    console.log('🔍 About to save nickname to localStorage:', newNickname)
+    // Removed for production: console.log('🔍 About to save nickname to localStorage:', newNickname)
     setNickname(newNickname)
     setAvatarColor(color)
     localStorage.setItem('nickname', newNickname)
     localStorage.setItem('avatarColor', color)
-    console.log('🔍 Nickname saved to localStorage:', newNickname)
+    // Removed for production: console.log('🔍 Nickname saved to localStorage:', newNickname)
     setShowNicknameModal(false)
     setNicknameInput('') // Clear input for next time
     toast.success('Nickname set!')
     
-    console.log('🔍 Modal should now be closed')
-    console.log('🔍 Nickname saved to localStorage:', newNickname)
+    // Removed for production: console.log('🔍 Modal should now be closed')
+    // Removed for production: console.log('🔍 Nickname saved to localStorage:', newNickname)
     
     // Update presence with new nickname
     if (presenceChannel) {
-      console.log('Updating presence with new nickname:', newNickname)
+      // Removed for production: console.log('Updating presence with new nickname:', newNickname)
       await presenceChannel.track({
         user_id: userId,
         nickname: newNickname,

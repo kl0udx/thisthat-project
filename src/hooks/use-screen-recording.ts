@@ -55,7 +55,7 @@ export function useScreenRecording({
 
       // Handle stream end (user stops sharing)
       stream.getVideoTracks()[0].onended = () => {
-        console.log('User stopped screen sharing via Chrome controls')
+        // Removed for production: console.log('User stopped screen sharing via Chrome controls')
         stopRecording()
       }
 
@@ -63,13 +63,13 @@ export function useScreenRecording({
       mediaRecorder.start(1000)
       setIsRecording(true)
       setRecordingTime(0)
-      console.log('Recording started successfully')
+      // Removed for production: console.log('Recording started successfully')
 
       // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           if (prev >= maxDuration - 1) {
-            console.log('Maximum recording time reached, stopping automatically')
+            // Removed for production: console.log('Maximum recording time reached, stopping automatically')
             stopRecording()
             toast.error('Maximum recording time reached')
             return prev
@@ -86,7 +86,7 @@ export function useScreenRecording({
   }, [maxDuration, onRecordingComplete])
 
   const stopRecording = useCallback(() => {
-    console.log('stopRecording called, current state:', isRecording)
+    // Removed for production: console.log('stopRecording called, current state:', isRecording)
     
     // Stop the media recorder if it exists
     if (mediaRecorderRef.current) {

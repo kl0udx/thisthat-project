@@ -112,7 +112,7 @@ export function AIProviderModal({
 
     // Simulate validation (in real app, could do a test API call)
     setTimeout(() => {
-      console.log('Modal calling onProviderAdded with:', selectedProvider.id, apiKey)
+      // Removed for production: console.log('Modal calling onProviderAdded with:', selectedProvider.id, apiKey)
       onProviderAdded(selectedProvider.id, apiKey.trim())
       setIsValidating(false)
       handleBack()

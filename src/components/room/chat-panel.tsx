@@ -70,7 +70,7 @@ function getApiKey(provider: string): string | null {
 // Helper to fetch and convert image to base64
 const prepareImageForAI = async (imageUrl: string) => {
   try {
-    console.log('🔧 prepareImageForAI fetching from:', imageUrl)
+    // Removed for production: console.log('🔧 prepareImageForAI fetching from:', imageUrl)
     
     const response = await fetch(imageUrl)
     if (!response.ok) {
@@ -94,10 +94,10 @@ const prepareImageForAI = async (imageUrl: string) => {
           return
         }
         
-        console.log('🔧 Image prepared:', {
-          mimeType,
-          dataLength: base64Data.length
-        })
+        // Removed for production: console.log('🔧 Image prepared:', {
+        //   mimeType,
+        //   dataLength: base64Data.length
+        // })
         
         // Return in correct format for Anthropic
         resolve({
@@ -113,7 +113,7 @@ const prepareImageForAI = async (imageUrl: string) => {
       reader.readAsDataURL(blob)
     })
   } catch (error) {
-    console.error('❌ prepareImageForAI error:', error)
+    // Removed for production: console.error('❌ prepareImageForAI error:', error)
     return null
   }
 }
@@ -128,31 +128,30 @@ const prepareSelectedObjectsContext = async (selectedObjects: any[]) => {
         text: `[Previous AI Response ${index + 1}]:\nPrompt: "${obj.prompt}"\nResponse: ${obj.content || ''}\n`
       })
     } else if (obj.type === 'image') {
-      console.log('🖼️ Processing image object:', {
-        id: obj.id,
-        hasSrc: !!obj.src,
-        srcType: typeof obj.src,
-        srcPreview: obj.src?.substring(0, 100),
-        hasTempSrc: !!obj.tempSrc,
-        tempSrcPreview: obj.tempSrc?.substring(0, 50)
-      })
+      // Removed for production: console.log('🖼️ Processing image object:', {
+      //   id: obj.id,
+      //   hasSrc: !!obj.src,
+      //   srcType: typeof obj.src,
+      //   srcPreview: obj.src?.substring(0, 100),
+      //   hasTempSrc: !!obj.tempSrc,
+      //   tempSrcPreview: obj.tempSrc?.substring(0, 50)
+      // })
       
       try {
-        // Before calling prepareImageForAI
-        console.log('📸 About to call prepareImageForAI with:', obj.src)
+        // Removed for production: console.log('📸 About to call prepareImageForAI with:', obj.src)
         
         const imageData = await prepareImageForAI(obj.src)
         
-        console.log('📦 prepareImageForAI returned:', {
-          hasData: !!imageData,
-          dataType: typeof imageData,
-          dataStructure: imageData ? Object.keys(imageData) : null,
-          isObject: typeof imageData === 'object'
-        })
+        // Removed for production: console.log('📦 prepareImageForAI returned:', {
+        //   hasData: !!imageData,
+        //   dataType: typeof imageData,
+        //   dataStructure: imageData ? Object.keys(imageData) : null,
+        //   isObject: typeof imageData === 'object'
+        // })
         
         contextParts.push({ type: 'image', data: imageData })
       } catch (error) {
-        console.error('Failed to prepare image:', error)
+        // Removed for production: console.error('Failed to prepare image:', error)
         contextParts.push({ type: 'text', text: `[Image ${index + 1}]: Failed to load image\n` })
       }
     }
@@ -182,9 +181,9 @@ export function ChatPanel({
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Debug logs
-  console.log('ChatPanel rendering, localProviders:', localProviders)
-  console.log('Input:', input)
-  console.log('Providers available:', providers)
+  // Removed for production: console.log('ChatPanel rendering, localProviders:', localProviders)
+  // Removed for production: console.log('Input:', input)
+  // Removed for production: console.log('Providers available:', providers)
 
   // Auto-scroll
   useEffect(() => {
@@ -214,7 +213,7 @@ export function ChatPanel({
     if (!input.trim()) return
     
     const messageContent = input.trim()
-    console.log('📝 Processing message:', messageContent)
+    // Removed for production: console.log('📝 Processing message:', messageContent)
     
     try {
       // Send message to Supabase
@@ -227,24 +226,24 @@ export function ChatPanel({
         ai_provider: messageContent.startsWith('@') ? detectProvider(messageContent) : undefined
       })
       
-      console.log('✅ Message sent to Supabase:', sentMessage.id)
+      // Removed for production: console.log('✅ Message sent to Supabase:', sentMessage.id)
       
       // Clear input immediately
       setInput('')
       
       // Handle AI commands AFTER message is sent
       if (messageContent.startsWith('@')) {
-        console.log('🤖 Detected AI command, parsing...')
+        // Removed for production: console.log('🤖 Detected AI command, parsing...')
         const parsed = parseMessage(messageContent)
-        console.log('📋 Parsed command:', parsed)
+        // Removed for production: console.log('📋 Parsed command:', parsed)
         if (parsed.type === 'ai') {
-          console.log('🎯 Calling handleAICommand...')
+          // Removed for production: console.log('🎯 Calling handleAICommand...')
           // Call handleAICommand with the parsed message
           await handleAICommand(parsed, sentMessage.id)
         }
       }
     } catch (error) {
-      console.error('Failed to send message:', error)
+      // Removed for production: console.error('Failed to send message:', error)
       toast.error('Failed to send message')
     }
   }
@@ -259,18 +258,18 @@ export function ChatPanel({
       return
     }
 
-    console.log('🎯 handleAICommand started:', {
-      provider: parsed.command,
-      prompt: parsed.prompt,
-      selectedObjectsReceived: selectedObjects,
-      selectedObjectsCount: selectedObjects?.length || 0,
-      firstSelectedObject: selectedObjects?.[0]
-    })
-    console.log('🎯 handleAICommand ENTRY POINT - Function called!')
-    console.log('🚀 handleAICommand ACTUALLY CALLED!', { parsed, messageId })
-    console.log('Provider type:', parsed.command === 'ai' ? 'anthropic' : parsed.command)
-    console.log('Local providers:', localProviders)
-    console.log('Providers map:', providers)
+    // Removed for production: console.log('🎯 handleAICommand started:', {
+    //   provider: parsed.command,
+    //   prompt: parsed.prompt,
+    //   selectedObjectsReceived: selectedObjects,
+    //   selectedObjectsCount: selectedObjects?.length || 0,
+    //   firstSelectedObject: selectedObjects?.[0]
+    // })
+    // Removed for production: console.log('🎯 handleAICommand ENTRY POINT - Function called!')
+    // Removed for production: console.log('🚀 handleAICommand ACTUALLY CALLED!', { parsed, messageId })
+    // Removed for production: console.log('Provider type:', parsed.command === 'ai' ? 'anthropic' : parsed.command)
+    // Removed for production: console.log('Local providers:', localProviders)
+    // Removed for production: console.log('Providers map:', providers)
 
     // Map command to provider type
     const commandMap: Record<string, string> = {
@@ -282,8 +281,8 @@ export function ChatPanel({
     }
 
     const providerType = commandMap[parsed.command] || parsed.command
-    console.log('Mapped provider type:', providerType)
-    console.log('Do we have this provider locally?', localProviders.has(providerType))
+    // Removed for production: console.log('Mapped provider type:', providerType)
+    // Removed for production: console.log('Do we have this provider locally?', localProviders.has(providerType))
 
     let enhancedPrompt = parsed.prompt
     let imageContent: any[] = []
@@ -294,13 +293,13 @@ export function ChatPanel({
       imageContent = contextParts.filter(p => p.type === 'image').map(p => p.data)
       
       // Debug logging for image data
-      console.log('🖼️ Image prepared:', {
-        hasImage: imageContent.length > 0,
-        imageCount: imageContent.length,
-        imageFormat: imageContent[0] ? typeof imageContent[0] : 'no image',
-        imagePreview: imageContent[0] ? imageContent[0].source.data.substring(0, 50) + '...' : 'no image',
-        isDataUrl: imageContent[0] ? imageContent[0].source.data.startsWith('data:') : false
-      })
+      // Removed for production: console.log('🖼️ Image prepared:', {
+      //   hasImage: imageContent.length > 0,
+      //   imageCount: imageContent.length,
+      //   imageFormat: imageContent[0] ? typeof imageContent[0] : 'no image',
+      //   imagePreview: imageContent[0] ? imageContent[0].source.data.substring(0, 50) + '...' : 'no image',
+      //   isDataUrl: imageContent[0] ? imageContent[0].source.data.startsWith('data:') : false
+      // })
       
       if (textParts.length > 0) {
         enhancedPrompt = textParts.join('\n---\n\n') + '\n\n---\n\nUser request: ' + parsed.prompt
@@ -308,10 +307,10 @@ export function ChatPanel({
     }
 
     if (localProviders.has(providerType)) {
-      console.log('✅ We have this provider locally! Provider type:', providerType)
+      // Removed for production: console.log('✅ We have this provider locally! Provider type:', providerType)
       const apiKey = getApiKey(providerType)
       if (!apiKey) {
-        console.error('No API key found!')
+        // Removed for production: console.error('No API key found!')
         return
       }
 
@@ -320,10 +319,10 @@ export function ChatPanel({
 
       try {
         let responseText = ''
-        console.log('About to switch on provider:', providerType)
+        // Removed for production: console.log('About to switch on provider:', providerType)
         switch (providerType) {
           case 'anthropic': {
-            console.log('Using Anthropic SDK...')
+            // Removed for production: console.log('Using Anthropic SDK...')
             const anthropic = new Anthropic({
               apiKey: apiKey,
               dangerouslyAllowBrowser: true
@@ -334,11 +333,11 @@ export function ChatPanel({
             // Build message content
             const messageContent: any[] = []
             if (imageContent.length > 0) {
-              console.log('🤖 Building Anthropic message:', {
-                hasImages: imageContent.length > 0,
-                imageContentArray: imageContent,
-                messageContentBeforeImages: messageContent
-              })
+              // Removed for production: console.log('🤖 Building Anthropic message:', {
+              //   hasImages: imageContent.length > 0,
+              //   imageContentArray: imageContent,
+              //   messageContentBeforeImages: messageContent
+              // })
               
               // Format images for Anthropic
               imageContent.forEach(img => {
@@ -361,14 +360,14 @@ export function ChatPanel({
             })
             
             // After messageContent is built
-            console.log('📤 Final messageContent for Claude:', {
-              type: typeof messageContent,
-              isArray: Array.isArray(messageContent),
-              length: Array.isArray(messageContent) ? messageContent.length : 'not array',
-              content: messageContent
-            })
+            // Removed for production: console.log('📤 Final messageContent for Claude:', {
+            //   type: typeof messageContent,
+            //   isArray: Array.isArray(messageContent),
+            //   length: Array.isArray(messageContent) ? messageContent.length : 'not array',
+            //   content: messageContent
+            // })
             
-            console.log('Sending to Claude with', imageContent.length, 'images using model:', model)
+            // Removed for production: console.log('Sending to Claude with', imageContent.length, 'images using model:', model)
             const response = await anthropic.messages.create({
               model: model,
               max_tokens: 2000,
@@ -377,7 +376,7 @@ export function ChatPanel({
                 content: messageContent
               }]
             })
-            console.log('Claude response:', response)
+            // Removed for production: console.log('Claude response:', response)
             // Safely access the response text
             if (response.content && response.content[0]) {
               const block = response.content[0];
@@ -394,7 +393,7 @@ export function ChatPanel({
             break
           }
           case 'openai': {
-            console.log('Using OpenAI SDK...')
+            // Removed for production: console.log('Using OpenAI SDK...')
             const openai = new OpenAI({ 
               apiKey: apiKey,
               dangerouslyAllowBrowser: true
@@ -405,10 +404,10 @@ export function ChatPanel({
             
             // Format message content based on whether images exist
             const hasImages = imageContent.length > 0
-            console.log('🤖 Processing distributed OpenAI request:', {
-              hasImages,
-              imageCount: hasImages ? imageContent.length : 0
-            })
+            // Removed for production: console.log('🤖 Processing distributed OpenAI request:', {
+            //   hasImages,
+            //   imageCount: hasImages ? imageContent.length : 0
+            // })
             
             const messageContent = hasImages 
               ? [
@@ -433,7 +432,7 @@ export function ChatPanel({
             break
           }
           case 'google': {
-            console.log('Using Google API...')
+            // Removed for production: console.log('Using Google API...')
             // Use gemini-1.5-pro (supports both text and vision)
             const model = 'gemini-1.5-pro'
             
@@ -473,29 +472,29 @@ export function ChatPanel({
           default:
             throw new Error(`Unsupported provider: ${providerType}`)
         }
-        console.log('API Response received:', responseText.substring(0, 100) + '...')
-        console.log('About to add to canvas, onCanvasAdd exists?', !!onCanvasAdd)
-        console.log('Canvas object data:', {
-          type: 'ai-response',
-          content: responseText,
-          prompt: enhancedPrompt,
-          provider: parsed.provider,
-          executedBy: nickname,
-          position: { x: 500, y: 300 }
-        })
+        // Removed for production: console.log('API Response received:', responseText.substring(0, 100) + '...')
+        // Removed for production: console.log('About to add to canvas, onCanvasAdd exists?', !!onCanvasAdd)
+        // Removed for production: console.log('Canvas object data:', {
+        //   type: 'ai-response',
+        //   content: responseText,
+        //   prompt: enhancedPrompt,
+        //   provider: parsed.provider,
+        //   executedBy: nickname,
+        //   position: { x: 500, y: 300 }
+        // })
 
         if (!responseText) {
-          console.error('No response text to display!')
+          // Removed for production: console.error('No response text to display!')
           return
         }
-        console.log('About to add to canvas, responseText:', responseText.substring(0, 100))
+        // Removed for production: console.log('About to add to canvas, responseText:', responseText.substring(0, 100))
 
-        console.log('Response from AI:', responseText)
-        console.log('Enhanced prompt was:', enhancedPrompt)
-        console.log('About to add to canvas with content:', responseText)
+        // Removed for production: console.log('Response from AI:', responseText)
+        // Removed for production: console.log('Enhanced prompt was:', enhancedPrompt)
+        // Removed for production: console.log('About to add to canvas with content:', responseText)
         if (onCanvasAdd) {
           const localResponseId = crypto.randomUUID()
-          console.log('✅ Local AI processing - adding card with responseId:', localResponseId)
+          // Removed for production: console.log('✅ Local AI processing - adding card with responseId:', localResponseId)
           onCanvasAdd({
             type: 'ai-response',
             content: responseText,  // This MUST be the AI's response only
@@ -507,18 +506,18 @@ export function ChatPanel({
           })
           
           // Don't broadcast - let Supabase handle distribution
-          console.log('✅ AI response added locally, no broadcast needed')
+          // Removed for production: console.log('✅ AI response added locally, no broadcast needed')
         } else {
-          console.error('❌ onCanvasAdd is not defined!')
+          // Removed for production: console.error('❌ onCanvasAdd is not defined!')
         }
 
       } catch (error: any) {
-        console.error('API Error:', error)
+        // Removed for production: console.error('API Error:', error)
       }
     } else {
-      console.log('❌ Provider not available locally')
+      // Removed for production: console.log('❌ Provider not available locally')
       // NEW: Route through Supabase when we don't have the provider
-      console.log(`Provider ${providerType} not available locally, routing request...`)
+      // Removed for production: console.log(`Provider ${providerType} not available locally, routing request...`)
       setIsProcessing(true)
       try {
         // Prepare the request data
@@ -557,7 +556,7 @@ export function ChatPanel({
         await createAIRequest(requestData)
         toast(`Request sent! Waiting for someone with ${parsed.command}...`)
       } catch (error) {
-        console.error('Failed to create AI request:', error)
+        // Removed for production: console.error('Failed to create AI request:', error)
         toast.error('Failed to send AI request')
         setIsProcessing(false)
       }
@@ -587,7 +586,7 @@ export function ChatPanel({
 
   const handleAIRequest = async (data: any) => {
     // Someone is asking us to use our AI
-    console.log('Received AI request:', data)
+    // Removed for production: console.log('Received AI request:', data)
     
     // In real app, make actual API call here
     // For now, simulate
@@ -657,7 +656,7 @@ export function ChatPanel({
             request.status === 'pending' &&
             request.requested_by_user_id !== userId
           ) {
-            console.log(`Processing ${request.provider} request from ${request.requested_by_nickname}`)
+            // Removed for production: console.log(`Processing ${request.provider} request from ${request.requested_by_nickname}`)
             await supabase
               .from('ai_requests')
               .update({ status: 'processing' })
@@ -672,29 +671,29 @@ export function ChatPanel({
               let contextContent = []
               
               if (request.metadata?.selected_objects) {
-                console.log('📥 Processing request with selected objects:', request.metadata)
+                // Removed for production: console.log('📥 Processing request with selected objects:', request.metadata)
                 
                 // Process each selected object
                 for (const obj of request.metadata.selected_objects) {
                   if (obj.type === 'image' && obj.src) {
-                    console.log('🖼️ Processing distributed image:', obj.src)
+                    // Removed for production: console.log('🖼️ Processing distributed image:', obj.src)
                     
                     try {
                       // Fetch and prepare the image from Supabase Storage URL
                       const imageData = await prepareImageForAI(obj.src)
                       
                       if (imageData && typeof imageData === 'object' && 'source' in imageData && imageData.source && typeof imageData.source === 'object' && 'data' in imageData.source) {
-                        console.log('✅ Image prepared for AI:', {
-                          hasData: !!imageData,
-                          hasSource: !!imageData.source,
-                          hasBase64Data: !!imageData.source.data
-                        })
+                        // Removed for production: console.log('✅ Image prepared for AI:', {
+                        //   hasData: !!imageData,
+                        //   hasSource: !!imageData.source,
+                        //   hasBase64Data: !!imageData.source.data
+                        // })
                         imageContent.push(imageData)
                       } else {
-                        console.error('❌ Failed to prepare image data')
+                        // Removed for production: console.error('❌ Failed to prepare image data')
                       }
                     } catch (error) {
-                      console.error('❌ Error preparing image:', error)
+                      // Removed for production: console.error('❌ Error preparing image:', error)
                     }
                   } else if (obj.content) {
                     contextContent.push(obj.content)
@@ -708,18 +707,18 @@ export function ChatPanel({
                 enhancedPrompt = `Context: ${contextContent.join('\n\n')}\n\nUser request: ${request.prompt}`
               }
               
-              console.log('📤 Calling AI with:', {
-                prompt: enhancedPrompt,
-                imageCount: imageContent.length,
-                provider: request.provider
-              })
+              // Removed for production: console.log('📤 Calling AI with:', {
+              //   prompt: enhancedPrompt,
+              //   imageCount: imageContent.length,
+              //   provider: request.provider
+              // })
               
               if (request.provider === 'anthropic') {
                 const anthropic = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
                 const model = 'claude-3-5-sonnet-20241022'
                 
                 const hasImages = imageContent.length > 0
-                console.log('🤖 Processing distributed Anthropic request:', { hasImages })
+                // Removed for production: console.log('🤖 Processing distributed Anthropic request:', { hasImages })
                 
                 // Build message content - images first, then text (Anthropic requirement)
                 const messageContent: any[] = []
@@ -762,10 +761,10 @@ export function ChatPanel({
                 const model = 'gpt-4-turbo'
                 
                 const hasImages = imageContent.length > 0
-                console.log('🤖 Processing distributed OpenAI request:', {
-                  hasImages,
-                  imageCount: hasImages ? imageContent.length : 0
-                })
+                // Removed for production: console.log('🤖 Processing distributed OpenAI request:', {
+                //   hasImages,
+                //   imageCount: hasImages ? imageContent.length : 0
+                // })
                 
                 // Format message content based on whether images exist
                 const messageContent = hasImages 
@@ -789,10 +788,10 @@ export function ChatPanel({
                 const model = 'gemini-1.5-pro'
                 
                 const hasImages = imageContent.length > 0
-                console.log('🤖 Processing distributed Google request:', {
-                  hasImages,
-                  imageCount: hasImages ? imageContent.length : 0
-                })
+                // Removed for production: console.log('🤖 Processing distributed Google request:', {
+                //   hasImages,
+                //   imageCount: hasImages ? imageContent.length : 0
+                // })
                 
                 // Build parts array with images if present
                 const parts: any[] = [{ text: enhancedPrompt }]
@@ -834,13 +833,13 @@ export function ChatPanel({
                 executed_by_nickname: nickname
               })
               
-              console.log('✅ AI Response created in Supabase:', aiResponse.id)
-              console.log('✅ Processor user ID:', userId)
+              // Removed for production: console.log('✅ AI Response created in Supabase:', aiResponse.id)
+              // Removed for production: console.log('✅ Processor user ID:', userId)
               
               // Add to canvas ONLY for the processor
               if (onCanvasAdd && responseText) {
-                console.log('✅ Processor adding AI response to canvas')
-                console.log('✅ Response ID for deduplication:', aiResponse.id)
+                // Removed for production: console.log('✅ Processor adding AI response to canvas')
+                // Removed for production: console.log('✅ Response ID for deduplication:', aiResponse.id)
                 onCanvasAdd({
                   type: 'ai-response',
                   content: responseText,
@@ -850,9 +849,9 @@ export function ChatPanel({
                   position: { x: 500, y: 300 },
                   responseId: aiResponse.id // Track response ID for deduplication
                 })
-                console.log('✅ Processor card added to canvas')
+                // Removed for production: console.log('✅ Processor card added to canvas')
               } else {
-                console.log('❌ Skipping processor card - onCanvasAdd:', !!onCanvasAdd, 'responseText:', !!responseText)
+                // Removed for production: console.log('❌ Skipping processor card - onCanvasAdd:', !!onCanvasAdd, 'responseText:', !!responseText)
               }
               
               await supabase
@@ -860,7 +859,7 @@ export function ChatPanel({
                 .update({ status: 'completed' })
                 .eq('id', request.id)
             } catch (error) {
-              console.error('Failed to process AI request:', error)
+              // Removed for production: console.error('Failed to process AI request:', error)
               await supabase
                 .from('ai_requests')
                 .update({ status: 'failed' })
@@ -1004,7 +1003,7 @@ export function ChatPanel({
                     
                     <form onSubmit={(e) => { 
                       e.preventDefault()
-                      console.log('Form submitted!')
+                      // Removed for production: console.log('Form submitted!')
                       handleSendMessage()
                     }} className="flex gap-2">
                       <Input
@@ -1030,7 +1029,7 @@ export function ChatPanel({
 
 function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean }) {
   // Debug logging
-  console.log('Rendering MessageBubble:', message)
+  // Removed for production: console.log('Rendering MessageBubble:', message)
   if (!message || !message.content) return null
 
   const getIcon = () => {
