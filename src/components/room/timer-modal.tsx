@@ -1,4 +1,4 @@
-import { Coffee, Copy, Check, Clock, Heart } from 'lucide-react'
+import { Copy, Check, Clock, Heart } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -39,7 +39,7 @@ export function TimerModal({ open, onOpenChange, roomCode }: TimerModalProps) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Coffee className="w-5 h-5" />
+            ☕
             Add Time to Your Room
           </DialogTitle>
           <DialogDescription>
@@ -99,19 +99,19 @@ export function TimerModal({ open, onOpenChange, roomCode }: TimerModalProps) {
               <Clock className="w-4 h-4" />
               Time Packages
             </h4>
-            <div className="grid grid-cols-3 gap-2">
-              <Badge variant="outline" className="flex flex-col items-center py-2">
-                <Coffee className="w-4 h-4 mb-1" />
+            <div className="grid grid-cols-3 gap-3">
+              <Badge variant="outline" className="flex flex-col items-center justify-center py-4 px-2 h-20">
+                <span className="text-sm font-medium mb-1">1x ☕</span>
                 <span className="text-xs">1 Coffee</span>
                 <span className="text-xs font-medium">30 min</span>
               </Badge>
-              <Badge variant="outline" className="flex flex-col items-center py-2">
-                <Coffee className="w-4 h-4 mb-1" />
+              <Badge variant="outline" className="flex flex-col items-center justify-center py-4 px-2 h-20">
+                <span className="text-sm font-medium mb-1">3x ☕</span>
                 <span className="text-xs">3 Coffees</span>
                 <span className="text-xs font-medium">2 hours</span>
               </Badge>
-              <Badge variant="outline" className="flex flex-col items-center py-2">
-                <Coffee className="w-4 h-4 mb-1" />
+              <Badge variant="outline" className="flex flex-col items-center justify-center py-4 px-2 h-20">
+                <span className="text-sm font-medium mb-1">5x ☕</span>
                 <span className="text-xs">5 Coffees</span>
                 <span className="text-xs font-medium">4 hours</span>
               </Badge>
@@ -121,11 +121,11 @@ export function TimerModal({ open, onOpenChange, roomCode }: TimerModalProps) {
           {/* BMC Button */}
           <Button 
             onClick={handleBMC}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+            className="w-full bg-[#9474e8] hover:bg-[#8a6fd8] text-white"
             size="lg"
           >
-            <Coffee className="w-4 h-4 mr-2" />
-            Buy Me a Coffee
+            ☕
+            <span className="ml-2">Buy Me a Coffee</span>
           </Button>
 
           {/* Footer */}

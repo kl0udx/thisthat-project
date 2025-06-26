@@ -69,7 +69,7 @@ export default function GalleryPage() {
             </p>
             <Button 
               size="lg" 
-              className="animate-pulse"
+              className="animate-pulse bg-[#323783] hover:bg-[#252d5f] text-white"
               onClick={() => router.push('/')}
             >
               <Zap className="mr-2 h-4 w-4" />
@@ -256,7 +256,11 @@ function CTACard({ onCreateRoom }: { onCreateRoom: () => void }) {
         <p className="text-sm text-muted-foreground">
           Start building with AI in seconds
         </p>
-        <Button variant="default" onClick={onCreateRoom}>
+        <Button 
+          variant="default" 
+          className="bg-[#323783] hover:bg-[#252d5f] text-white"
+          onClick={onCreateRoom}
+        >
           Create Room
         </Button>
       </div>
@@ -305,7 +309,11 @@ function VideoPlayerModal({
           
           {/* CTA After Video */}
           <div className="flex gap-4">
-            <Button size="lg" className="flex-1" onClick={onCreateRoom}>
+            <Button 
+              size="lg" 
+              className="flex-1 bg-[#323783] hover:bg-[#252d5f] text-white" 
+              onClick={onCreateRoom}
+            >
               Create Similar Room
             </Button>
             <Button size="lg" variant="outline" className="flex-1" onClick={onClose}>
@@ -328,7 +336,12 @@ function EmptyState({ onCreateRoom }: { onCreateRoom: () => void }) {
         <p className="text-muted-foreground mb-4">
           Be the first to share your collaboration!
         </p>
-        <Button onClick={onCreateRoom}>Create Room Now</Button>
+        <Button 
+          className="bg-[#323783] hover:bg-[#252d5f] text-white"
+          onClick={onCreateRoom}
+        >
+          Create Room Now
+        </Button>
       </CardContent>
     </Card>
   )

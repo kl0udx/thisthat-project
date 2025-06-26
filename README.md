@@ -1,76 +1,106 @@
-# THISTHAT.FUN 🚀
+# THISTHAT 🎨✨
 
-**Vibe and Enjoy This. Build and Create That. Together.**
+**Real-time collaborative canvas with distributed AI superpowers**
 
-The first AI collaboration tool that allows you to share resources because vibes are better together!
+Draw together, build together, and share AI resources without sharing API keys. The first collaboration tool where one person's AI becomes everyone's superpower.
 
 🌐 **Live Demo**: [thisthat.fun](https://thisthat.fun)
 
-## 🏆 Bolt.new Hackathon Submission
+## 🚀 What is THISTHAT?
 
-### Challenges We're Tackling:
-- **🚀 Startup Challenge** - Using Supabase to build a scalable real-time collaboration platform
-- **🌐 Custom Domain Challenge** - Deployed on IONOS domain: thisthat.fun
+THISTHAT is a real-time collaborative workspace where teams can draw, chat, and use AI together on an infinite canvas. Our revolutionary distributed AI system means when one person adds their AI provider, everyone in the room can use it instantly - no more "everyone needs their own API key"!
 
-## 🎯 What is THISTHAT?
+### 🧠 The Magic: Distributed AI
 
-THISTHAT is a revolutionary multiplayer AI workspace where creativity meets collaboration. Unlike traditional AI tools where everyone needs their own API keys, THISTHAT lets one person add AI capabilities and everyone in the room benefits instantly.
+**Problem**: Traditional AI tools require everyone to have their own API keys, making team collaboration expensive and complicated.
 
-### The Magic: Distributed AI Through WebRTC
-- **One person adds ChatGPT** → Everyone can use it
-- **Another adds Perplexity** → Everyone can search
-- **Someone adds Claude** → Everyone gets analysis
-- **API keys stay private** → P2P architecture ensures security
+**Our Solution**: Distributed AI through secure room-based sharing
+- Alice joins and adds her Claude API key → Everyone can now use Claude
+- Bob joins and adds his GPT-4 key → Everyone can now use both Claude AND GPT-4  
+- Carol joins with Gemini → The room now has access to all three AI providers
+- When Bob leaves → Claude and Gemini still work, only GPT-4 goes offline
 
-## ✨ Core Features
+**Benefits**:
+- 🔐 **Secure**: API keys never leave the owner's browser (Supabase RLS)
+- 💰 **Fair**: Each person contributes their own AI credits
+- 🤝 **Collaborative**: Mix and match AI providers in real-time
+- 🔄 **Resilient**: No single point of failure
 
-### 🤝 True Multiplayer AI
-- Real-time collaboration with multiple users
-- See each other's cursors and actions
-- Chat naturally while building together
-- Voice commands with ElevenLabs integration
+### 🗺️ Distributed AI Architecture
 
-### 🎨 Infinite Canvas (25,000 x 25,000px)
-- Draw, sketch, and ideate freely
-- Transform sketches into code with AI
+```mermaid
+flowchart LR
+    subgraph Room
+        Alice["Alice's Browser\nClaude API Key"]
+        Bob["Bob's Browser\nGPT-4 API Key"]
+        Carol["Carol's Browser\nGemini API Key"]
+    end
+    Alice -- "Claude available to all" --> Room
+    Bob -- "GPT-4 available to all" --> Room
+    Carol -- "Gemini available to all" --> Room
+    Room -- "AI requests routed to available providers" --> Alice
+    Room -- "AI requests routed to available providers" --> Bob
+    Room -- "AI requests routed to available providers" --> Carol
+```
+
+### ✨ Key Features
+
+#### 🎨 **Infinite Collaborative Canvas**
+- Draw, sketch, and annotate together in real-time
+- See live cursors of all participants
 - Drag and arrange AI responses spatially
-- Visual thinking meets AI power
+- Visual thinking meets AI assistance
 
-### 🧠 Distributed Intelligence
-- **No central server** - Everything runs peer-to-peer
-- **Privacy first** - API keys never leave your browser
-- **Cost sharing** - Each person uses their own API credits
-- **Resilient** - If someone leaves, only their tools go offline
+#### 🤖 **Multi-Provider AI Integration**
+- **Claude 3.5** - Advanced analysis and coding
+- **GPT-4** - General assistance and creativity  
+- **Gemini Pro** - Google's latest AI capabilities
+- Use multiple AI providers simultaneously
+- AI responses appear as draggable cards on canvas
 
-### 🛠️ Build Together
-- Generate React components from sketches
-- Search for best practices while coding
-- Get AI suggestions on improvements
-- See the evolution of ideas visually
+#### 👥 **Real-Time Collaboration**
+- Join rooms with simple 8-character codes
+- See who's in the room with avatar indicators
+- Built-in chat with @ai, @gpt, @claude commands
+- Everything syncs instantly across all users
 
-## 🚧 Roadmap
+#### 🎬 **Screen Recording & Gallery**
+- Record your collaborative sessions
+- Share recordings to public gallery
+- Get +10 minutes free collaboration time per share
+- Showcase your team's creative process
 
-- [x] P2P implementation
-- [x] Basic canvas with drawing
-- [x] AI provider integration
-- [x] Chat with @ commands
-- [ ] More provider integrations (GitHub, Perplexity)
-- [ ] Persistent rooms
-- [ ] Mobile support
-- [ ] Canvas collaboration features
+#### ⏱️ **Fair Monetization**
+- 1 hour free when 2+ people join
+- Pay-as-you-go with Buy Me a Coffee
+- Time added benefits everyone in the room
+- No subscriptions, just coffee ☕
 
-## 🙏 Acknowledgments
+## 🎯 Use Cases
 
-- Built with [Bolt.new](https://bolt.new) for the Hackathon
-- Powered by [Supabase](https://supabase.com) for real-time
-- Domain by [IONOS](https://ionos.com)
+- **Remote Teaching**: Teacher adds AI, all students can use it for explanations
+- **Startup Teams**: Share expensive AI tools without sharing costs unfairly
+- **Design Reviews**: One designer's Claude account helps the whole team
+- **Study Groups**: Pool AI resources for better learning
+- **Hackathons**: Rapid prototyping with shared AI capabilities
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript, TailwindCSS
+- **Real-time**: Supabase (Broadcast, Presence, Database, RLS)
+- **Canvas**: HTML5 Canvas with custom drawing engine
+- **AI Providers**: Anthropic, OpenAI, Google AI SDKs
+- **UI Components**: shadcn/ui
+- **Media**: MediaRecorder API for session recording
+- **Payments**: Buy Me a Coffee + Zapier webhook integration
+- **Architecture**: Hybrid P2P + Supabase for optimal performance
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
-- Supabase account (for signaling)
+- Supabase project (for real-time backend)
 
 ### Installation
 
@@ -99,24 +129,21 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-## 🛠️ Tech Stack
+🚧 Coming Soon
+- Spatial object improvements
+- Voice chat integration
+- More canvas tools like shapes
+- File Storage
+- More AI providers (Perplexity, Midjourney, Deepseek)
+- Enhancements on previewing designs and outputs
+- Export canvas as image/PDF
 
-- **Frontend**: Next.js 14, React, TailwindCSS
-- **Real-time**: WebRTC, Supabase Realtime
-- **AI Integration**: OpenAI, Anthropic, Google AI
-- **Styling**: shadcn/ui, Framer Motion
-- **Deployment**: Vercel
+🏆 Awards & Recognition
+Built for the Bolt.new Hackathon - showcasing the future of collaborative AI tools.
 
-## 🤝 Contributing
+🙏 Acknowledgments
 
-We welcome contributions! Please feel free to submit a Pull Request.
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 📞 Contact
-
-- Website: [thisthat.fun](https://thisthat.fun)
-- Twitter: [@thisthat_fun](https://twitter.com/thisthat_fun)
-- Email: hello@thisthat.fun
+Built with Bolt.new
+Powered by Supabase
+UI components from shadcn/ui
+Deployed on Vercel

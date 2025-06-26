@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { PlayCircle } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { RoomTimer } from '@/components/room/room-timer'
 
@@ -70,14 +70,17 @@ export function RoomHeader({
       
       {/* Right side - buttons */}
       <div className="flex gap-2">
-        <Link href="/gallery">
-          <Button variant="outline" size="sm">
-            <PlayCircle className="mr-2 h-4 w-4" />
-            Gallery
-          </Button>
-        </Link>
-        <Button onClick={onShare} variant="outline" size="sm">
+        <Button onClick={onShare} variant="outline" size="sm" className="border-2 border-[#de2c97]">
           Share
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.open('https://tally.so/r/wa199q', '_blank')}
+          className="gap-2 border-2 border-[#de2c97]"
+        >
+          <MessageCircle className="h-4 w-4" />
+          Feedback
         </Button>
       </div>
     </div>

@@ -4,7 +4,6 @@ import { use, useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { RoomHeader } from '@/components/room/room-header'
 import InfiniteCanvas, { type InfiniteCanvasRef } from '@/components/room/infinite-canvas'
 import { CanvasToolbar } from '@/components/room/canvas-toolbar'
-import { ConnectionStatus } from '@/components/room/connection-status'
 import { ShareModal } from '@/components/room/share-modal'
 import { ChatPanel } from '@/components/room/chat-panel'
 import { AIProviderModal } from '@/components/room/ai-provider-modal'
@@ -15,6 +14,7 @@ import { GalleryUploadModal } from '@/components/room/gallery-upload-modal'
 import { RoomTimer } from '@/components/room/room-timer'
 import { TimerModal } from '@/components/room/timer-modal'
 import { BoltBadge } from '@/components/ui/bolt-badge'
+import { AnnouncementModal } from '@/components/ui/announcement-modal'
 import { useP2PConnection } from '@/hooks/useP2PConnection'
 import { useScreenRecording } from '@/hooks/use-screen-recording'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -1815,49 +1815,6 @@ export default function RoomPage({
             </div>
           </div>
 
-          {/* Connection Status */}
-          <div className="fixed bottom-4 right-4 z-50">
-            <ConnectionStatus
-              state={connectionState}
-              peerCount={allUsers.length}
-            />
-            
-            {/* Test WebRTC Button */}
-            <Button
-              onClick={() => {
-                console.log('🧪 Test broadcast')
-                console.log('🧪 Current connection state:', {
-                  isConnected,
-                  connectionState,
-                  peerCount: peers.length,
-                  broadcastFunction: !!broadcast
-                })
-                
-                if (broadcast) {
-                  // First, run debug info
-                  if ((window as any).debugWebRTC) {
-                    (window as any).debugWebRTC()
-                  }
-                  
-                  // Then send test message
-                  broadcast({
-                    type: 'test-message',
-                    text: 'Hello from ' + (nickname || suggestedNickname || ''),
-                    timestamp: Date.now()
-                  })
-                  console.log('✅ Broadcast sent')
-                } else {
-                  console.log('❌ Broadcast function not available')
-                }
-              }}
-              className="mt-2 w-full"
-              variant="outline"
-              size="sm"
-            >
-              Test WebRTC
-            </Button>
-          </div>
-
           {/* Chat Panel */}
           <ChatPanel
             roomCode={safeCode}
@@ -1940,6 +1897,9 @@ export default function RoomPage({
             onConfirm={handleUploadToGallery}
             isUploading={isUploading}
           />
+
+          {/* Announcement Modal */}
+          <AnnouncementModal />
 
           {/* Bolt Badge */}
           <BoltBadge size="small" />
