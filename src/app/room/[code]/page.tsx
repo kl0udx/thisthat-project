@@ -126,7 +126,7 @@ export default function RoomPage({
   // Always call useP2PConnection, but pass null when we shouldn't connect
   const { isConnected, peers, connectionState, broadcast, sendTo, connection } = useP2PConnection(
     mounted && nickname && !showNicknameModal ? code : null,
-    userId,
+    userId ?? '',
     nickname || suggestedNickname || '' // Use suggestedNickname as fallback
   )
 
@@ -1090,13 +1090,13 @@ export default function RoomPage({
     broadcast({
       type: 'provider-added',
       provider,
-      userId,
-      nickname,
+      userId: userId ?? '',
+      nickname: nickname ?? '',
       capabilities: ['chat', 'code', 'analysis']
     })
     setProviders(prev => new Map(prev).set(provider, {
-      userId,
-      nickname,
+      userId: userId ?? '',
+      nickname: nickname ?? '',
       type: provider
     }))
     toast.success('Provider added!')
@@ -1112,7 +1112,7 @@ export default function RoomPage({
     broadcast({
       type: 'provider-removed',
       provider,
-      userId
+      userId: userId ?? ''
     })
     setProviders(prev => {
       const next = new Map(prev)
@@ -1655,7 +1655,7 @@ export default function RoomPage({
                 broadcast({ type: 'canvas-clear' })
                 console.log('✅ Broadcast sent for canvas clear')
               }}
-              activeTool={activeTool}
+              activeTool={activeTool as 'pen' | 'select' | 'eraser'}
               isReadOnly={roomSession?.is_readonly || false}
             />
             
